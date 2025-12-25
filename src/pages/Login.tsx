@@ -26,6 +26,20 @@ export default function Login() {
     }
   };
 
+  const handleDevLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      await signIn('admin@test.com', 'Test123!');
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign in. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-900 via-emerald-800 to-emerald-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
@@ -111,6 +125,17 @@ export default function Login() {
                 )}
               </button>
             </form>
+
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleDevLogin}
+                disabled={loading}
+                className="w-full flex justify-center py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                Dev Access
+              </button>
+            </div>
           </div>
 
           <div className="px-8 py-4 bg-gradient-to-r from-emerald-50 to-yellow-50 border-t border-gray-200">
