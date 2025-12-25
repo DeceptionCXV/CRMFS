@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import {
@@ -6,7 +5,6 @@ import {
   Users,
   DollarSign,
   TrendingUp,
-  Calendar,
   Download,
   PieChart,
   BarChart3,
@@ -15,11 +13,10 @@ import {
 } from 'lucide-react';
 
 export default function Reports() {
-  const [dateRange, setDateRange] = useState('all');
 
   // Fetch all data for reports
   const { data: reportData, isLoading } = useQuery({
-    queryKey: ['reports', dateRange],
+    queryKey: ['reports'],
     queryFn: async () => {
       const [
         { data: members },
@@ -49,29 +46,29 @@ export default function Reports() {
 
   // Calculate membership stats
   const membershipStats = {
-    total: members.length,
-    active: members.filter((m: any) => m.status === 'active').length,
-    pending: members.filter((m: any) => m.status === 'pending').length,
-    inactive: members.filter((m: any) => m.status === 'inactive').length,
-    deceased: members.filter((m: any) => m.status === 'deceased').length,
-    single: members.filter((m: any) => m.app_type === 'single').length,
-    joint: members.filter((m: any) => m.app_type === 'joint').length,
-    totalChildren: children.length,
+    total: members?.length || 0,
+    active: members?.filter((m: any) => m.status === 'active').length || 0,
+    pending: members?.filter((m: any) => m.status === 'pending').length || 0,
+    inactive: members?.filter((m: any) => m.status === 'inactive').length || 0,
+    deceased: members?.filter((m: any) => m.status === 'deceased').length || 0,
+    single: members?.filter((m: any) => m.app_type === 'single').length || 0,
+    joint: members?.filter((m: any) => m.app_type === 'joint').length || 0,
+    totalChildren: children?.length || 0,
   };
 
   // Calculate financial stats
   const financialStats = {
     totalRevenue: payments
-      .filter((p: any) => p.payment_status === 'completed')
-      .reduce((sum, p) => sum + Number(p.total_amount), 0),
+      ?.filter((p: any) => p.payment_status === 'completed')
+      .reduce((sum, p) => sum + Number(p.total_amount), 0) || 0,
     pendingRevenue: payments
-      .filter((p: any) => p.payment_status === 'pending')
-      .reduce((sum, p) => sum + Number(p.total_amount), 0),
-    totalPayments: payments.length,
-    completedPayments: payments.filter((p: any) => p.payment_status === 'completed').length,
-    pendingPayments: payments.filter((p: any) => p.payment_status === 'pending').length,
+      ?.filter((p: any) => p.payment_status === 'pending')
+      .reduce((sum, p) => sum + Number(p.total_amount), 0) || 0,
+    totalPayments: payments?.length || 0,
+    completedPayments: payments?.filter((p: any) => p.payment_status === 'completed').length || 0,
+    pendingPayments: payments?.filter((p: any) => p.payment_status === 'pending').length || 0,
     averagePayment:
-      payments.length > 0
+      payments && payments.length > 0
         ? payments.reduce((sum, p) => sum + Number(p.total_amount), 0) / payments.length
         : 0,
   };
@@ -89,24 +86,24 @@ export default function Reports() {
     return age;
   };
 
-  const ageDistribution = feeStructure.map((tier: any) => {
-    const count = members.filter((m: any) => {
+  const ageDistribution = feeStructure?.map((tier: any) => {
+    const count = members?.filter((m: any) => {
       const age = calculateAge(m.dob);
       return age >= tier.age_min && age <= tier.age_max;
-    }).length;
+    }).length || 0;
     return {
       range: `${tier.age_min}-${tier.age_max}`,
       count,
       joiningFee: tier.joining_fee,
     };
-  });
+  }) || [];
 
   // Payment method breakdown
-  const paymentMethods = payments.reduce((acc: any, payment: any) => {
+  const paymentMethods = payments?.reduce((acc: any, payment: any) => {
     const method = payment.payment_method || 'unknown';
     acc[method] = (acc[method] || 0) + 1;
     return acc;
-  }, {});
+  }, {}) || {};
 
   // Monthly registration trend (last 6 months)
   const last6Months = Array.from({ length: 6 }, (_, i) => {
@@ -114,13 +111,13 @@ export default function Reports() {
     date.setMonth(date.getMonth() - i);
     return {
       month: date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }),
-      count: members.filter((m: any) => {
+      count: members?.filter((m: any) => {
         const memberDate = new Date(m.created_at);
         return (
           memberDate.getMonth() === date.getMonth() &&
           memberDate.getFullYear() === date.getFullYear()
         );
-      }).length,
+      }).length || 0,
     };
   }).reverse();
 
@@ -144,7 +141,7 @@ export default function Reports() {
   };
 
   const exportMembersReport = () => {
-    const data = members.map((m: any) => ({
+    const data = members?.map((m: any) => ({
       ID: m.id,
       Type: m.app_type,
       Title: m.title,
@@ -155,12 +152,12 @@ export default function Reports() {
       Mobile: m.mobile,
       Status: m.status,
       CreatedAt: new Date(m.created_at).toLocaleDateString(),
-    }));
+    })) || [];
     downloadCSV(data, 'members_report');
   };
 
   const exportPaymentsReport = () => {
-    const data = payments.map((p: any) => ({
+    const data = payments?.map((p: any) => ({
       ID: p.id,
       MemberID: p.member_id,
       Type: p.payment_type,
@@ -169,7 +166,7 @@ export default function Reports() {
       Status: p.payment_status,
       Date: p.payment_date || p.created_at,
       Reference: p.reference_no,
-    }));
+    })) || [];
     downloadCSV(data, 'payments_report');
   };
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import {
@@ -18,12 +18,10 @@ import {
   MapPin,
   Calendar,
   Edit,
-  Trash2,
 } from 'lucide-react';
 
 export default function MemberDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('personal');
 
   // Fetch member with all related data
@@ -659,7 +657,7 @@ function PaymentsTab({ payments }: any) {
 
 // Helper Components
 
-function InfoField({ label, value, icon: Icon, highlight, badge }: any) {
+function InfoField({ label, value, icon: Icon, highlight }: any) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-500 mb-1">{label}</label>

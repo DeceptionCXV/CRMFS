@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
@@ -305,6 +305,20 @@ export default function AddMember() {
     }));
   };
 
+  const visibleSteps = formData.app_type === 'single'
+    ? steps.filter((_, index) => index !== 2)
+    : steps;
+
+  const visibleStepIcons = formData.app_type === 'single'
+    ? stepIcons.filter((_, index) => index !== 2)
+    : stepIcons;
+
+  const stepIndexMap = formData.app_type === 'single'
+    ? [0, 1, 3, 4, 5, 6, 7, 8, 9]
+    : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  const currentVisibleStepIndex = stepIndexMap.indexOf(currentStep);
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
@@ -314,26 +328,26 @@ export default function AddMember() {
 
       <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          {steps.map((step, index) => {
-            const Icon = stepIcons[index];
-            const isActive = index === currentStep;
-            const isCompleted = index < currentStep;
-            const isSkipped = formData.app_type === 'single' && index === 2 && currentStep > 2;
+          {visibleSteps.map((step, visualIndex) => {
+            const actualIndex = stepIndexMap[visualIndex];
+            const Icon = visibleStepIcons[visualIndex];
+            const isActive = actualIndex === currentStep;
+            const isCompleted = actualIndex < currentStep;
 
             return (
               <div key={step} className="flex items-center">
                 <div className="flex flex-col items-center">
                   <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
                       isActive ? 'border-emerald-600 bg-emerald-600 text-white' :
-                      isCompleted || isSkipped ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 bg-white text-gray-400'
+                      isCompleted ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 bg-white text-gray-400'
                     }`}>
-                    {isCompleted || isSkipped ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                    {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                   </div>
                   <span className={`mt-2 text-xs font-medium hidden md:block ${isActive ? 'text-emerald-600' : 'text-gray-500'}`}>
                     {step}
                   </span>
                 </div>
-                {index < steps.length - 1 && <div className={`h-0.5 w-8 mx-2 ${isCompleted || isSkipped ? 'bg-emerald-600' : 'bg-gray-300'}`} />}
+                {visualIndex < visibleSteps.length - 1 && <div className={`h-0.5 w-8 mx-2 ${isCompleted ? 'bg-emerald-600' : 'bg-gray-300'}`} />}
               </div>
             );
           })}
@@ -359,7 +373,7 @@ export default function AddMember() {
           <ArrowLeft className="h-4 w-4 mr-2" /> Back
         </button>
 
-        <span className="text-sm text-gray-600">Step {currentStep + 1} of {steps.length}</span>
+        <span className="text-sm text-gray-600">Step {currentVisibleStepIndex + 1} of {visibleSteps.length}</span>
 
         {currentStep < steps.length - 1 ? (
           <button onClick={handleNext}

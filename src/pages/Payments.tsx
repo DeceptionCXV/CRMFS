@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 
 export default function Payments() {
-  const queryClient = useQueryClient();
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
