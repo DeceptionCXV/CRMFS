@@ -547,9 +547,12 @@ function StepMainMember({ formData, updateFormData, validationErrors }: any) {
           {validationErrors.last_name && <p className="text-red-500 text-xs mt-1">{validationErrors.last_name}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth <span className="text-red-500">*</span></label>
-          <input type="date" required value={formData.dob} onChange={(e) => updateFormData('dob', e.target.value)}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${validationErrors.dob ? 'border-red-500' : 'border-gray-300'}`} />
+          <DateInput
+            label="Date of Birth"
+            required
+            value={formData.dob}
+            onChange={(value) => updateFormData('dob', value)}
+          />
           {validationErrors.dob && <p className="text-red-500 text-xs mt-1">{validationErrors.dob}</p>}
         </div>
         <div className="md:col-span-2">
@@ -635,9 +638,12 @@ function StepJointMember({ formData, updateFormData }: any) {
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Enter last name" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth <span className="text-red-500">*</span></label>
-          <input type="date" required value={formData.joint_dob} onChange={(e) => updateFormData('joint_dob', e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" />
+          <DateInput
+            label="Date of Birth"
+            required
+            value={formData.joint_dob}
+            onChange={(value) => updateFormData('joint_dob', value)}
+          />
         </div>
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">Address Line 1</label>
@@ -685,8 +691,6 @@ function StepJointMember({ formData, updateFormData }: any) {
 }
 
 function StepChildren({ formData, addChild, removeChild, updateChild, childValidationErrors }: any) {
-  const today = new Date().toISOString().split('T')[0];
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -731,9 +735,20 @@ function StepChildren({ formData, addChild, removeChild, updateChild, childValid
                     {errors.last_name && <p className="text-red-500 text-xs mt-1">{errors.last_name}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth <span className="text-red-500">*</span></label>
-                    <input type="date" required value={child.dob} max={today} onChange={(e) => updateChild(index, 'dob', e.target.value)}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.dob ? 'border-red-500' : 'border-gray-300'}`} />
+                    <DateInput
+                      label="Date of Birth"
+                      required
+                      value={child.dob}
+                      onChange={(value) => updateChild(index, 'dob', value)}
+                      minDate={(() => {
+                        const date = new Date();
+                        date.setFullYear(date.getFullYear() - 18);
+                        date.setDate(date.getDate() + 1);
+                        return date.toISOString().split('T')[0];
+                      })()}
+                      maxDate={new Date().toISOString().split('T')[0]}
+                      errorMessage="Child must be under 18 years old and DOB cannot be in the future"
+                    />
                     {errors.dob && <p className="text-red-500 text-xs mt-1">{errors.dob}</p>}
                   </div>
                   <div>
