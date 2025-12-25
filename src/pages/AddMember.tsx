@@ -559,28 +559,54 @@ export default function AddMember() {
         <p className="mt-1 text-sm text-gray-600">Complete all steps to register a new funeral service member</p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
+        <div className="flex items-center justify-center gap-2">
           {visibleSteps.map((step, visualIndex) => {
             const actualIndex = stepIndexMap[visualIndex];
             const Icon = visibleStepIcons[visualIndex];
             const isActive = actualIndex === currentStep;
             const isCompleted = actualIndex < currentStep;
+            const isClickable = isCompleted || isActive;
+
+            const handleStepClick = () => {
+              if (isClickable) {
+                setValidationErrors({});
+                setChildValidationErrors({});
+                setCurrentStep(actualIndex);
+              }
+            };
 
             return (
               <div key={step} className="flex items-center">
                 <div className="flex flex-col items-center">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
-                      isActive ? 'border-emerald-600 bg-emerald-600 text-white' :
-                      isCompleted ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 bg-white text-gray-400'
-                    }`}>
-                    {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-                  </div>
-                  <span className={`mt-2 text-xs font-medium hidden md:block ${isActive ? 'text-emerald-600' : 'text-gray-500'}`}>
+                  <button
+                    type="button"
+                    onClick={handleStepClick}
+                    disabled={!isClickable}
+                    className={`relative flex items-center justify-center w-14 h-14 rounded-full border-2 transition-all duration-300 ${
+                      isActive
+                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-lg shadow-emerald-200 scale-110'
+                        : isCompleted
+                        ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:border-emerald-700 hover:shadow-md cursor-pointer'
+                        : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
+                    } ${isClickable && !isActive ? 'hover:scale-105' : ''}`}
+                  >
+                    {isCompleted ? <Check className="h-6 w-6" /> : <Icon className="h-6 w-6" />}
+                    {isActive && (
+                      <div className="absolute inset-0 rounded-full border-2 border-emerald-400 animate-pulse"></div>
+                    )}
+                  </button>
+                  <span className={`mt-3 text-xs font-medium text-center max-w-[80px] leading-tight transition-colors duration-300 ${
+                    isActive ? 'text-emerald-600 font-semibold' : isCompleted ? 'text-emerald-700' : 'text-gray-500'
+                  }`}>
                     {step}
                   </span>
                 </div>
-                {visualIndex < visibleSteps.length - 1 && <div className={`h-0.5 w-8 mx-2 ${isCompleted ? 'bg-emerald-600' : 'bg-gray-300'}`} />}
+                {visualIndex < visibleSteps.length - 1 && (
+                  <div className={`h-1 w-12 mx-3 rounded-full transition-all duration-500 ${
+                    isCompleted ? 'bg-emerald-600' : 'bg-gray-300'
+                  }`} />
+                )}
               </div>
             );
           })}
