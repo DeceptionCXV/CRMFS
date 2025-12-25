@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar } from 'lucide-react';
+import { Calendar, AlertCircle } from 'lucide-react';
 
 interface DateInputProps {
   value: string; // ISO date string (YYYY-MM-DD)
@@ -8,6 +8,9 @@ interface DateInputProps {
   required?: boolean;
   className?: string;
   placeholder?: string;
+  minDate?: string; // ISO date string (YYYY-MM-DD)
+  maxDate?: string; // ISO date string (YYYY-MM-DD)
+  errorMessage?: string;
 }
 
 export default function DateInput({
@@ -17,9 +20,13 @@ export default function DateInput({
   required = false,
   className = '',
   placeholder = 'DD/MM/YYYY',
+  minDate,
+  maxDate,
+  errorMessage,
 }: DateInputProps) {
   const [displayValue, setDisplayValue] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
+  const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const calendarRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +39,37 @@ export default function DateInput({
       setDisplayValue('');
     }
   }, [value]);
+
+  // Validate date against min/max
+  const validateDate = (isoDate: string): boolean => {
+    if (!isoDate) return true; // Empty is valid (unless required, which HTML handles)
+
+    const date = new Date(isoDate);
+    
+    if (minDate) {
+      const min = new Date(minDate);
+      if (date < min) {
+        setError(errorMessage || `Date must be after ${formatDisplayDate(minDate)}`);
+        return false;
+      }
+    }
+    
+    if (maxDate) {
+      const max = new Date(maxDate);
+      if (date > max) {
+        setError(errorMessage || `Date must be before ${formatDisplayDate(maxDate)}`);
+        return false;
+      }
+    }
+    
+    setError('');
+    return true;
+  };
+
+  const formatDisplayDate = (isoDate: string): string => {
+    const [year, month, day] = isoDate.split('-');
+    return `${day}/${month}/${year}`;
+  };
 
   // Convert display format (DD/MM/YYYY) to ISO format (YYYY-MM-DD)
   const convertToISO = (dateStr: string): string => {
@@ -83,8 +121,14 @@ export default function DateInput({
     // Try to convert to ISO and update parent if valid
     const isoDate = convertToISO(input);
     if (isoDate) {
-      onChange(isoDate);
+      if (validateDate(isoDate)) {
+        onChange(isoDate);
+      } else {
+        // Still update to trigger validation in parent, but show error
+        onChange(isoDate);
+      }
     } else if (input === '') {
+      setError('');
       onChange('');
     }
   };
@@ -97,7 +141,12 @@ export default function DateInput({
   };
 
   const handleCalendarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(e.target.value);
+    const isoDate = e.target.value;
+    if (validateDate(isoDate)) {
+      onChange(isoDate);
+    } else {
+      onChange(isoDate); // Still update to show error
+    }
     setShowCalendar(false);
   };
 
@@ -125,7 +174,11 @@ export default function DateInput({
           onFocus={handleFocus}
           placeholder={placeholder}
           required={required}
-          className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+          className={`w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-emerald-500 transition-colors ${
+            error
+              ? 'border-red-300 focus:border-red-500 bg-red-50'
+              : 'border-gray-300 focus:border-emerald-500'
+          }`}
         />
         <button
           type="button"
@@ -140,10 +193,18 @@ export default function DateInput({
           type="date"
           value={value}
           onChange={handleCalendarChange}
+          min={minDate}
+          max={maxDate}
           className="absolute opacity-0 pointer-events-none"
           style={{ width: 0, height: 0 }}
         />
       </div>
+      {error && (
+        <div className="mt-2 flex items-start text-sm text-red-600">
+          <AlertCircle className="h-4 w-4 mr-1 mt-0.5 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
     </div>
   );
 }
