@@ -1,13 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// HARDCODED - Bolt can't fuck with this
+const supabaseUrl = 'https://fkpwibismkewrezgchbq.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrcHdpYmlzbWtld3JlemdjaGJxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjYzMDM0NSwiZXhwIjoyMDgyMjA2MzQ1fQ.I8JiWEwrT9logY7rC9E3CbT4tBvY0n2qkizAQjTPeSg';
 
+// Validation check
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
+  throw new Error('❌ CRITICAL: Supabase credentials missing! Check supabase.ts');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Additional check to make sure we're using the RIGHT project
+if (!supabaseUrl.includes('fkpwibismkewrezgchbq')) {
+  throw new Error('❌ CRITICAL: Wrong Supabase project! URL should contain "fkpwibismkewrezgchbq"');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+console.log('✅ Supabase connected to:', supabaseUrl.substring(0, 30) + '...');
+
   auth: {
     persistSession: true,
     autoRefreshToken: true,
