@@ -8,7 +8,7 @@ export default {
     extend: {
       // CHANGE YOUR FONTS HERE
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'], // Main font - change 'Inter' to any Google Font
+        sans: ['Space Grotesk', 'system-ui', 'sans-serif'], // Main font - change 'Inter' to any Google Font
         // Alternative options:
         // sans: ['Poppins', 'system-ui', 'sans-serif'],
         // sans: ['Roboto', 'system-ui', 'sans-serif'],
