@@ -1,13 +1,11 @@
-// ============================================
-// OPTIMISTIC UPDATES
-// Instant UI feedback before server confirms
-// ============================================
+// src/hooks/useOptimisticUpdates.ts
+// Instant UI feedback - no waiting for server!
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
 // ============================================
-// EXAMPLE 1: Optimistic Member Status Update
+// 1. OPTIMISTIC MEMBER STATUS UPDATE
 // ============================================
 
 export function useMemberStatusUpdate() {
@@ -23,13 +21,13 @@ export function useMemberStatusUpdate() {
       if (error) throw error;
     },
 
-    // BEFORE the server responds:
+    // BEFORE server responds - update UI immediately!
     onMutate: async ({ memberId, newStatus }) => {
-      // Cancel outgoing queries
+      // Cancel outgoing queries to prevent race conditions
       await queryClient.cancelQueries({ queryKey: ['members'] });
       await queryClient.cancelQueries({ queryKey: ['member-detail', memberId] });
 
-      // Get current data
+      // Save current state for rollback
       const previousMembers = queryClient.getQueryData(['members']);
       const previousMember = queryClient.getQueryData(['member-detail', memberId]);
 
@@ -54,20 +52,17 @@ export function useMemberStatusUpdate() {
       return { previousMembers, previousMember };
     },
 
-    // If mutation fails, rollback:
+    // If mutation fails, rollback
     onError: (err, variables, context) => {
       if (context?.previousMembers) {
         queryClient.setQueryData(['members'], context.previousMembers);
       }
       if (context?.previousMember) {
-        queryClient.setQueryData(
-          ['member-detail', variables.memberId],
-          context.previousMember
-        );
+        queryClient.setQueryData(['member-detail', variables.memberId], context.previousMember);
       }
     },
 
-    // After success, refetch to be sure:
+    // After success, refetch to sync with server
     onSettled: (data, error, variables) => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['member-detail', variables.memberId] });
@@ -75,82 +70,12 @@ export function useMemberStatusUpdate() {
   });
 }
 
-// Usage in component:
-function MemberCard({ member }: { member: any }) {
-  const updateStatus = useMemberStatusUpdate();
-
-  const handlePause = () => {
-    updateStatus.mutate({
-      memberId: member.id,
-      newStatus: 'paused',
-    });
-    // UI updates INSTANTLY! No waiting for server!
-  };
-
-  return (
-    <button onClick={handlePause}>
-      Pause Membership
-    </button>
-  );
-}
-
 // ============================================
-// EXAMPLE 2: Optimistic Payment Addition
+// 2. OPTIMISTIC MEMBER DELETE
 // ============================================
 
-export function useAddPayment() {
+export function useOptimisticDelete() {
   const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (payment: any) => {
-      const { data, error } = await supabase
-        .from('payments')
-        .insert(payment)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-
-    onMutate: async (newPayment) => {
-      await queryClient.cancelQueries({ queryKey: ['payments'] });
-
-      const previousPayments = queryClient.getQueryData(['payments']);
-
-      // Add optimistic payment with temporary ID
-      const optimisticPayment = {
-        ...newPayment,
-        id: `temp-${Date.now()}`,
-        created_at: new Date().toISOString(),
-      };
-
-      queryClient.setQueryData(['payments'], (old: any) => {
-        return old ? [optimisticPayment, ...old] : [optimisticPayment];
-      });
-
-      return { previousPayments };
-    },
-
-    onError: (err, variables, context) => {
-      if (context?.previousPayments) {
-        queryClient.setQueryData(['payments'], context.previousPayments);
-      }
-    },
-
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
-    },
-  });
-}
-
-// ============================================
-// EXAMPLE 3: Optimistic Delete
-// ============================================
-
-export function useDeleteMember() {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
 
   return useMutation({
     mutationFn: async (memberId: string) => {
@@ -172,17 +97,12 @@ export function useDeleteMember() {
         return old ? old.filter((m: any) => m.id !== memberId) : old;
       });
 
-      // Navigate away immediately (feels instant!)
-      navigate('/members');
-
       return { previousMembers };
     },
 
     onError: (err, variables, context) => {
       if (context?.previousMembers) {
         queryClient.setQueryData(['members'], context.previousMembers);
-        // Navigate back
-        navigate(`/members/${variables}`);
       }
     },
 
@@ -193,105 +113,94 @@ export function useDeleteMember() {
 }
 
 // ============================================
-// EXAMPLE 4: Optimistic Like/Favorite
-// (For future features like "starred members")
+// 3. OPTIMISTIC PAYMENT STATUS UPDATE
 // ============================================
 
-export function useToggleFavorite() {
+export function usePaymentStatusUpdate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ memberId, isFavorite }: any) => {
+    mutationFn: async ({ paymentId, newStatus }: { paymentId: string; newStatus: string }) => {
       const { error } = await supabase
-        .from('members')
-        .update({ is_favorite: !isFavorite })
-        .eq('id', memberId);
+        .from('payments')
+        .update({ payment_status: newStatus })
+        .eq('id', paymentId);
 
       if (error) throw error;
     },
 
-    onMutate: async ({ memberId, isFavorite }) => {
-      await queryClient.cancelQueries({ queryKey: ['members'] });
+    onMutate: async ({ paymentId, newStatus }) => {
+      await queryClient.cancelQueries({ queryKey: ['payments'] });
 
-      const previousMembers = queryClient.getQueryData(['members']);
+      const previousPayments = queryClient.getQueryData(['payments']);
 
-      queryClient.setQueryData(['members'], (old: any) => {
-        return old
-          ? old.map((m: any) =>
-              m.id === memberId ? { ...m, is_favorite: !isFavorite } : m
-            )
-          : old;
+      queryClient.setQueryData(['payments'], (old: any) => {
+        if (!old) return old;
+        return old.map((p: any) =>
+          p.id === paymentId ? { ...p, payment_status: newStatus } : p
+        );
       });
 
-      return { previousMembers };
+      return { previousPayments };
     },
 
     onError: (err, variables, context) => {
-      if (context?.previousMembers) {
-        queryClient.setQueryData(['members'], context.previousMembers);
+      if (context?.previousPayments) {
+        queryClient.setQueryData(['payments'], context.previousPayments);
       }
+    },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
     },
   });
 }
 
 // ============================================
-// PRO TIPS FOR OPTIMISTIC UPDATES
+// HOW TO USE IN COMPONENTS
 // ============================================
 
 /*
-1. Always cancel outgoing queries first (prevent race conditions)
-2. Save previous state for rollback
-3. Update all related queries (list + detail)
-4. Show loading indicators on buttons (but UI updates instantly)
-5. Use toast notifications for success/error
-6. Invalidate queries after success to sync with server
+// In MemberDetail.tsx or MemberCard.tsx:
 
-WHEN TO USE:
-✅ Status changes (pause, activate, archive)
-✅ Simple updates (name, email, phone)
-✅ Toggles (favorite, starred, hidden)
-✅ Deletes (remove from list)
-✅ Quick additions (add note, tag)
+import { useMemberStatusUpdate } from '../hooks/useOptimisticUpdates';
 
-WHEN NOT TO USE:
-❌ Complex forms with validation
-❌ File uploads
-❌ Critical financial transactions
-❌ Multi-step processes
+function MemberActions({ member }) {
+  const updateStatus = useMemberStatusUpdate();
+
+  const handlePause = () => {
+    updateStatus.mutate({
+      memberId: member.id,
+      newStatus: 'paused',
+    });
+    // UI updates INSTANTLY! No waiting!
+  };
+
+  const handleActivate = () => {
+    updateStatus.mutate({
+      memberId: member.id,
+      newStatus: 'active',
+    });
+  };
+
+  return (
+    <>
+      <button
+        onClick={handlePause}
+        disabled={updateStatus.isPending}
+        className="..."
+      >
+        {updateStatus.isPending ? 'Pausing...' : 'Pause'}
+      </button>
+
+      <button
+        onClick={handleActivate}
+        disabled={updateStatus.isPending}
+        className="..."
+      >
+        {updateStatus.isPending ? 'Activating...' : 'Activate'}
+      </button>
+    </>
+  );
+}
 */
-
-// ============================================
-// AGGRESSIVE CACHING CONFIG
-// ============================================
-
-// Update your QueryClient config in App.tsx:
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-      staleTime: 5 * 60 * 1000, // 5 minutes (good!)
-      cacheTime: 30 * 60 * 1000, // 30 minutes (aggressive!)
-      
-      // NEW aggressive settings:
-      refetchOnMount: false, // Don't refetch if data exists
-      refetchOnReconnect: false, // Don't refetch on reconnect
-    },
-  },
-});
-
-// For specific queries that change rarely, be even more aggressive:
-const { data } = useQuery({
-  queryKey: ['fee-structure'],
-  queryFn: fetchFeeStructure,
-  staleTime: Infinity, // Never consider stale!
-  cacheTime: Infinity, // Keep in cache forever!
-});
-
-// For real-time data, be more conservative:
-const { data } = useQuery({
-  queryKey: ['dashboard-stats'],
-  queryFn: fetchStats,
-  staleTime: 30 * 1000, // 30 seconds
-  refetchInterval: 60 * 1000, // Auto-refetch every minute
-});
