@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -10,9 +11,12 @@ import {
   AlertCircle,
   Plus,
   RefreshCw,
+  Check,
 } from 'lucide-react';
 
 export default function Dashboard() {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   // Fetch dashboard stats
   const { data: stats, isLoading, refetch: refetchStats } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -170,15 +174,35 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              refetchStats();
-              refetchMembers();
-              refetchRenewals();
+            onClick={async () => {
+              setIsRefreshing(true);
+              await Promise.all([
+                refetchStats(),
+                refetchMembers(),
+                refetchRenewals(),
+              ]);
+              setIsRefreshing(false);
+              setShowSuccess(true);
+              setTimeout(() => setShowSuccess(false), 2000);
             }}
-            className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all shadow-sm hover:shadow"
+            disabled={isRefreshing || showSuccess}
+            className={`inline-flex items-center px-4 py-2 rounded-lg transition-all shadow-sm hover:shadow ${
+              showSuccess
+                ? 'bg-green-600 border-green-600 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            } disabled:opacity-75 disabled:cursor-not-allowed`}
           >
-            <RefreshCw className="h-5 w-5 mr-2" />
-            Refresh
+            {showSuccess ? (
+              <>
+                <Check className="h-5 w-5 mr-2" />
+                Refreshed
+              </>
+            ) : (
+              <>
+                <RefreshCw className={`h-5 w-5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </>
+            )}
           </button>
           <Link
             to="/members/new"
