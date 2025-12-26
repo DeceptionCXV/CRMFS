@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('users')
         .select('*')
         .eq('id', userId)
-        .maybeSingle(); // Use maybeSingle instead of single to avoid errors
+        .maybeSingle();
 
       console.log('Profile fetch result:', { data, error });
 
@@ -68,8 +68,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     let isMounted = true;
 
-    // Check current session
+    // TEMPORARY: Force clear all sessions on first load
+    const forceReset = async () => {
+      const hasReset = localStorage.getItem('auth_force_reset');
+      
+      if (!hasReset) {
+        console.log('🔥 FORCE RESET: Clearing all auth sessions...');
+        
+        // Sign out from Supabase
+        await supabase.auth.signOut();
+        
+        // Clear all storage
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // Mark as reset
+        localStorage.setItem('auth_force_reset', 'true');
+        
+        console.log('✅ Force reset complete! Reloading...');
+        
+        // Reload page
+        window.location.reload();
+        return true;
+      }
+      
+      return false;
+    };
+
     const checkSession = async () => {
+      // Check if we need to force reset
+      const didReset = await forceReset();
+      if (didReset) return;
+
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
@@ -132,6 +162,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       console.log('Signing out...');
+      
+      // Clear the force reset flag
+      localStorage.removeItem('auth_force_reset');
+      
       const { error } = await supabase.auth.signOut();
       
       if (error) {
@@ -140,6 +174,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setUser(null);
       setProfile(null);
+      
+      // Clear all storage
+      localStorage.clear();
+      sessionStorage.clear();
       
       // Force redirect to login
       window.location.href = '/login';
