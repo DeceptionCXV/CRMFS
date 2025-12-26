@@ -21,6 +21,9 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: 1,
       staleTime: 5 * 60 * 1000, // 5 minutes
+      cacheTime: 30 * 60 * 1000, // 30 minutes - AGGRESSIVE!
+      refetchOnMount: false, // Don't refetch if data exists
+      refetchOnReconnect: false, // Don't refetch on reconnect
     },
   },
 });
@@ -31,8 +34,10 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <ToastProvider>
+            {/* Command Palette - OUTSIDE Routes */}
+            <CommandPalette />
+            
             <Routes>
-              <CommandPalette />
               {/* All Routes - No Auth */}
               <Route path="/" element={<CompactLayout />}>
                 <Route index element={<Dashboard />} />
