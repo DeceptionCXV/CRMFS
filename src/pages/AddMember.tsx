@@ -100,6 +100,7 @@ export default function AddMember() {
   const savedApplication = location.state?.savedApplication;
 
   const [currentStep, setCurrentStep] = useState(savedApplication?.current_step || 0);
+  const [highestStepReached, setHighestStepReached] = useState(savedApplication?.current_step || 0);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [childValidationErrors, setChildValidationErrors] = useState<Record<number, Record<string, string>>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -505,9 +506,13 @@ export default function AddMember() {
     setChildValidationErrors({});
 
     if (currentStep === 1 && formData.app_type === 'single') {
-      setCurrentStep(3);
+      const nextStep = 3;
+      setCurrentStep(nextStep);
+      setHighestStepReached((prev) => Math.max(prev, nextStep));
     } else {
-      setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
+      const nextStep = Math.min(currentStep + 1, steps.length - 1);
+      setCurrentStep(nextStep);
+      setHighestStepReached((prev) => Math.max(prev, nextStep));
     }
   };
 
@@ -585,10 +590,11 @@ export default function AddMember() {
             const Icon = visibleStepIcons[visualIndex];
             const isActive = actualIndex === currentStep;
             const isCompleted = actualIndex < currentStep;
-            const isClickable = isCompleted || isActive;
+            const isReachable = actualIndex <= highestStepReached;
+            const isClickable = isReachable && !isActive;
 
             const handleStepClick = () => {
-              if (isCompleted) {
+              if (isClickable) {
                 setValidationErrors({});
                 setChildValidationErrors({});
                 setCurrentStep(actualIndex);
@@ -599,20 +605,21 @@ export default function AddMember() {
               <div key={step} className="flex items-center">
                 <div 
                   className={`flex flex-col items-center min-w-[80px] ${
-                    isCompleted ? 'cursor-pointer group' : ''
+                    isClickable ? 'cursor-pointer group' : ''
                   }`}
                   onClick={handleStepClick}
                 >
                   <div className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
                       isActive ? 'border-emerald-600 bg-emerald-600 text-white' :
                       isCompleted ? 'border-emerald-600 bg-emerald-600 text-white group-hover:bg-emerald-700 group-hover:border-emerald-700 group-hover:scale-110' : 
+                      isReachable ? 'border-emerald-600 bg-white text-emerald-600 group-hover:bg-emerald-50' :
                       'border-gray-300 bg-white text-gray-400'
                     }`}>
                     {isCompleted ? <Check className="h-6 w-6" /> : <Icon className="h-6 w-6" />}
                   </div>
                   <span className={`mt-2 text-xs font-medium text-center transition-colors ${
                     isActive ? 'text-emerald-600' : 
-                    isCompleted ? 'text-gray-500 group-hover:text-emerald-600' : 
+                    isClickable ? 'text-gray-500 group-hover:text-emerald-600' : 
                     'text-gray-400'
                   }`}>
                     {step}
