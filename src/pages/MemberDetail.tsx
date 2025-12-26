@@ -1764,5 +1764,3 @@ function ActivityLogTab({ memberId }: ActivityLogTabProps) {
     </div>
   );
 }
-
-export default ActivityLogTab;
