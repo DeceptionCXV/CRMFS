@@ -27,6 +27,11 @@ import {
   Skull,
   History,
   AlertTriangle,
+  Activity,
+  Clock,
+  PoundSterling,
+  AlertCircle,
+  CheckCircle,
 } from 'lucide-react';
 
 export default function MemberDetail() {
