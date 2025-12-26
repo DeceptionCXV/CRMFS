@@ -57,11 +57,11 @@ export default function Payments() {
       const today = new Date();
       return paymentDate.toDateString() === today.toDateString();
     }).length || 0,
-    overdueRenewals: payments?.filter((p: any) => {
-      if (!p.renewal_date) return false;
-      return new Date(p.renewal_date) < new Date() && p.payment_status !== 'completed';
-    }).length || 0,
+    overdueRenewals: payments?.filter((p: any) => p.payment_status === 'overdue').length || 0,
   };
+
+  // Get overdue payments for widget
+  const overduePayments = payments?.filter((p: any) => p.payment_status === 'overdue') || [];
 
   // Filter payments
   const filteredPayments = payments?.filter((payment: any) => {
@@ -97,6 +97,7 @@ export default function Payments() {
     const styles = {
       completed: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle },
       pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: Clock },
+      overdue: { bg: 'bg-red-100', text: 'text-red-800', icon: AlertCircle },
       failed: { bg: 'bg-red-100', text: 'text-red-800', icon: XCircle },
       refunded: { bg: 'bg-gray-100', text: 'text-gray-800', icon: XCircle },
     };
@@ -136,6 +137,67 @@ export default function Payments() {
           Record Payment
         </button>
       </div>
+
+      {/* Late Payments Widget - Only show if there are overdue payments */}
+      {overduePayments.length > 0 && (
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200 rounded-xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-red-100 rounded-lg">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-red-900">Late Payments</h3>
+                <p className="text-sm text-red-700">
+                  {overduePayments.length} {overduePayments.length === 1 ? 'payment is' : 'payments are'} overdue
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setStatusFilter('overdue')}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+            >
+              View All Overdue
+            </button>
+          </div>
+          <div className="space-y-2">
+            {overduePayments.slice(0, 3).map((payment: any) => (
+              <Link
+                key={payment.id}
+                to={`/members/${payment.member_id}`}
+                className="flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-semibold">
+                    {payment.members?.first_name?.[0]}{payment.members?.last_name?.[0]}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {payment.members?.first_name} {payment.members?.last_name}
+                    </p>
+                    <p className="text-xs text-gray-500">{payment.members?.email}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-red-600">
+                    £{Number(payment.total_amount).toFixed(2)}
+                  </p>
+                  {payment.late_fee > 0 && (
+                    <p className="text-xs text-red-500">
+                      +£{Number(payment.late_fee).toFixed(2)} late fee
+                    </p>
+                  )}
+                </div>
+              </Link>
+            ))}
+            {overduePayments.length > 3 && (
+              <p className="text-sm text-red-700 text-center pt-2">
+                +{overduePayments.length - 3} more overdue payment{overduePayments.length - 3 !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -204,7 +266,7 @@ export default function Payments() {
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Overdue Renewals</dt>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Overdue Payments</dt>
                   <dd className="flex items-baseline">
                     <div className="text-2xl font-semibold text-gray-900">{stats.overdueRenewals}</div>
                   </dd>
@@ -245,6 +307,7 @@ export default function Payments() {
                 <option value="all">All Status</option>
                 <option value="completed">Completed</option>
                 <option value="pending">Pending</option>
+                <option value="overdue">Overdue</option>
                 <option value="failed">Failed</option>
                 <option value="refunded">Refunded</option>
               </select>
@@ -323,9 +386,14 @@ export default function Payments() {
                       <span className="text-sm text-gray-900">{payment.payment_type || 'N/A'}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-semibold text-emerald-600">
-                        £{Number(payment.total_amount).toFixed(2)}
-                      </span>
+                      <div>
+                        <span className="text-sm font-semibold text-emerald-600">
+                          £{Number(payment.total_amount).toFixed(2)}
+                        </span>
+                        {payment.late_fee > 0 && (
+                          <p className="text-xs text-red-600">+£{Number(payment.late_fee).toFixed(2)} late fee</p>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-gray-900">{payment.payment_method || 'N/A'}</span>
