@@ -54,22 +54,63 @@ export default function Dashboard() {
     },
   });
 
-  // Fetch upcoming renewals (members who joined ~1 year ago)
+  // Fetch upcoming renewals (members whose anniversary is within next 30 days)
   const { data: upcomingRenewals } = useQuery({
     queryKey: ['upcoming-renewals'],
     queryFn: async () => {
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      oneYearAgo.setMonth(oneYearAgo.getMonth() + 1); // Next month
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-      const { data } = await supabase
-        .from('payments')
-        .select('*, members(first_name, last_name, email)')
-        .gte('renewal_date', new Date().toISOString())
-        .lte('renewal_date', oneYearAgo.toISOString())
-        .order('renewal_date', { ascending: true })
-        .limit(5);
-      return data || [];
+      // Get all active members with their join dates
+      const { data: members } = await supabase
+        .from('members')
+        .select('id, first_name, last_name, email, join_date, status')
+        .eq('status', 'active')
+        .not('join_date', 'is', null)
+        .order('join_date', { ascending: true });
+
+      if (!members) return [];
+
+      // Filter members whose anniversary is within next 30 days
+      const renewals = members
+        .map((member) => {
+          const joinDate = new Date(member.join_date);
+          const currentYear = today.getFullYear();
+          
+          // Calculate this year's anniversary
+          const anniversaryThisYear = new Date(
+            currentYear,
+            joinDate.getMonth(),
+            joinDate.getDate()
+          );
+
+          // If anniversary already passed this year, calculate next year's
+          const renewalDate = anniversaryThisYear < today
+            ? new Date(currentYear + 1, joinDate.getMonth(), joinDate.getDate())
+            : anniversaryThisYear;
+
+          // Check if renewal is within next 30 days
+          if (renewalDate >= today && renewalDate <= thirtyDaysFromNow) {
+            const daysUntil = Math.ceil((renewalDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            return {
+              id: member.id,
+              first_name: member.first_name,
+              last_name: member.last_name,
+              email: member.email,
+              renewal_date: renewalDate.toISOString(),
+              days_until_renewal: daysUntil,
+            };
+          }
+
+          return null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.days_until_renewal - b.days_until_renewal)
+        .slice(0, 5); // Limit to 5 most urgent
+
+      return renewals;
     },
   });
 
@@ -135,7 +176,7 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* APPLICATIONS IN PROGRESS WIDGET - ADDED HERE */}
+      {/* APPLICATIONS IN PROGRESS WIDGET */}
       <ApplicationsInProgress />
 
       {/* Stats Grid */}
@@ -242,35 +283,48 @@ export default function Dashboard() {
           <div className="divide-y divide-gray-200">
             {upcomingRenewals && upcomingRenewals.length > 0 ? (
               upcomingRenewals.map((renewal) => (
-                <div
+                <Link
                   key={renewal.id}
-                  className="px-6 py-4 hover:bg-yellow-50 transition-colors"
+                  to={`/members/${renewal.id}`}
+                  className="px-6 py-4 hover:bg-yellow-50 transition-colors block"
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {renewal.members?.first_name} {renewal.members?.last_name}
+                        {renewal.first_name} {renewal.last_name}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {renewal.members?.email}
+                        {renewal.email}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium text-gray-900">
-                        {renewal.renewal_date
-                          ? new Date(renewal.renewal_date).toLocaleDateString()
-                          : 'N/A'}
+                        {new Date(renewal.renewal_date).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
                       </p>
-                      <p className="text-xs text-gray-500">
-                        £{Number(renewal.total_amount).toFixed(2)}
+                      <p className={`text-xs font-semibold ${
+                        renewal.days_until_renewal <= 7 
+                          ? 'text-red-600' 
+                          : renewal.days_until_renewal <= 14
+                          ? 'text-orange-600'
+                          : 'text-yellow-600'
+                      }`}>
+                        {renewal.days_until_renewal === 0 
+                          ? 'Today!' 
+                          : renewal.days_until_renewal === 1
+                          ? 'Tomorrow'
+                          : `In ${renewal.days_until_renewal} days`}
                       </p>
                     </div>
                   </div>
-                </div>
+                </Link>
               ))
             ) : (
               <div className="px-6 py-8 text-center text-gray-500">
-                No upcoming renewals
+                No upcoming renewals in the next 30 days
               </div>
             )}
           </div>
