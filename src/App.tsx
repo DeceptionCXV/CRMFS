@@ -54,6 +54,7 @@ function App() {
                   <Route path="payments" element={<Payments />} />
                   <Route path="reports" element={<Reports />} />
                   <Route path="/deceased" element={<DeceasedMembers />} />
+                  <Route path="/deceased/:id" element={<DeceasedDetail />} />
                   <Route path="registration-success" element={<RegistrationSuccess />} />
                 </Route>
 
