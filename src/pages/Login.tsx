@@ -1,158 +1,208 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { AlertCircle } from 'lucide-react';
-import PoweredByBadge from '../components/PoweredByBadge';
+import { supabase } from '../lib/supabase';
+import { LogIn, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
-  const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    
+    setIsLoading(true);
     setError('');
-    setLoading(true);
 
     try {
-      await signIn(email, password);
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) throw signInError;
+
+      // Update last login timestamp
+      if (data.user) {
+        await supabase.rpc('update_last_login');
+      }
+
+      // Navigate to dashboard
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in. Please check your credentials.');
+      console.error('Login error:', err);
+      setError(err.message || 'Invalid email or password');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleDevLogin = async () => {
+  const handleDevBypass = async () => {
+    setEmail('admin@test.com');
+    setPassword('Test123!');
+    setIsLoading(true);
     setError('');
-    setLoading(true);
 
     try {
-      await signIn('admin@test.com', 'Test123!');
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: 'admin@test.com',
+        password: 'Test123!',
+      });
+
+      if (signInError) throw signInError;
+
+      // Update last login timestamp
+      if (data.user) {
+        await supabase.rpc('update_last_login');
+      }
+
+      // Navigate to dashboard
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in. Please check your credentials.');
+      console.error('Dev bypass error:', err);
+      setError('Dev bypass failed. User may not exist.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-900 via-emerald-800 to-emerald-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-yellow-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <div className="inline-block bg-white/10 backdrop-blur-sm rounded-2xl p-6 border-2 border-yellow-600 shadow-2xl">
-            <h1 className="text-3xl font-bold text-yellow-400 drop-shadow-lg">
-              Central Region
-            </h1>
-            <p className="text-yellow-200 mt-2 text-sm">Muslim Funeral Service</p>
-            <div className="mt-3 h-1 w-24 mx-auto bg-gradient-to-r from-transparent via-yellow-400 to-transparent"></div>
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-700 mb-4 shadow-lg">
+            <span className="text-3xl font-bold text-white">K</span>
           </div>
-          <h2 className="mt-8 text-2xl font-semibold text-white">
-            Sign in to your account
-          </h2>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            CRMFS Login
+          </h1>
+          <p className="text-gray-600">
+            Central Region Muslim Funeral Service
+          </p>
         </div>
 
-        {/* Login Form */}
-        <div className="bg-white rounded-xl shadow-2xl overflow-hidden border-t-4 border-yellow-600">
-          <div className="px-8 py-8">
+        {/* Login Card */}
+        <div className="bg-white rounded-lg shadow-xl p-8 border border-gray-200">
+          <form onSubmit={handleLogin} className="space-y-6">
+            {/* Email */}
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email Address
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+                placeholder="your.email@example.com"
+                required
+                autoFocus
+              />
+            </div>
+
+            {/* Password */}
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            {/* Remember Me */}
+            <div className="flex items-center justify-between">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Remember me</span>
+              </label>
+              <button
+                type="button"
+                className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                onClick={() => alert('Password reset coming soon!')}
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            {/* Error Message */}
             {error && (
-              <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                <div className="flex items-center">
-                  <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
+              <div className="flex items-start space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-800">{error}</p>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700 mb-2"
-                >
-                  Email address
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
-                  placeholder="Enter your email"
-                />
-              </div>
+            {/* Login Button */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-emerald-600 text-white py-3 rounded-lg font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                <>
+                  <LogIn className="h-5 w-5 mr-2" />
+                  Sign In
+                </>
+              )}
+            </button>
+          </form>
 
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700 mb-2"
-                >
-                  Password
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
-                  placeholder="Enter your password"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02]"
-              >
-                {loading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Signing in...
-                  </div>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
-            </form>
-
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={handleDevLogin}
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                Dev Access
-              </button>
-            </div>
-          </div>
-
-          <div className="px-8 py-4 bg-gradient-to-r from-emerald-50 to-yellow-50 border-t border-gray-200">
-            <p className="text-xs text-center text-gray-600">
-              Secured access for authorized personnel only
+          {/* Dev Bypass Button */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <button
+              onClick={handleDevBypass}
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 text-white py-3 rounded-lg font-semibold hover:from-cyan-600 hover:to-teal-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-md"
+            >
+              <span className="mr-2">🐕</span>
+              Dev Bypass (Kelpie AI)
+            </button>
+            <p className="text-xs text-gray-500 text-center mt-2">
+              Development access only
             </p>
           </div>
         </div>
 
         {/* Footer */}
-        <p className="mt-6 text-center text-sm text-emerald-200">
-          © {new Date().getFullYear()} Central Region Muslim Funeral Service
-        </p>
+        <div className="text-center mt-6">
+          <p className="text-sm text-gray-600">
+            Powered by{' '}
+            <a
+              href="https://kelpieai.co.uk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-600 hover:text-emerald-700 font-semibold"
+            >
+              Kelpie AI
+            </a>
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Version 0.1.6.3 | Built for Falkirk Central Mosque
+          </p>
+        </div>
       </div>
-
-      <PoweredByBadge />
     </div>
   );
 }
