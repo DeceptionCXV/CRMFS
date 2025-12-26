@@ -20,7 +20,7 @@ console.log('✅ Supabase connected to:', supabaseUrl.substring(0, 30) + '...');
 
   auth: {
     persistSession: true,
-    autoRefreshToken: true,
+    autoRefreshToken; true,
   },
 });
 
