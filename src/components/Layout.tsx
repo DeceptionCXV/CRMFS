@@ -10,6 +10,7 @@ import {
   Menu,
   X,
 } from 'lucide-react';
+import PoweredByBadge from './PoweredByBadge';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -187,6 +188,8 @@ export default function Layout() {
           </div>
         </main>
       </div>
+
+      <PoweredByBadge />
     </div>
   );
 }

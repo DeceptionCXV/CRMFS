@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Home, ArrowLeft, Search } from 'lucide-react';
+import PoweredByBadge from '../components/PoweredByBadge';
 
 export default function NotFound() {
   const navigate = useNavigate();
@@ -84,6 +85,8 @@ export default function NotFound() {
           </a>
         </p>
       </div>
+
+      <PoweredByBadge />
     </div>
   );
 }

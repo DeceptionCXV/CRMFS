@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AlertCircle } from 'lucide-react';
+import PoweredByBadge from '../components/PoweredByBadge';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -150,6 +151,8 @@ export default function Login() {
           © {new Date().getFullYear()} Central Region Muslim Funeral Service
         </p>
       </div>
+
+      <PoweredByBadge />
     </div>
   );
 }
