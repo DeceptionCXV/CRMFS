@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import CompactLayout from '../components/CompactLayout';
 import MemberSubNav from '../components/MemberSubNav';
 import { ProfileHeaderSkeleton, FormSkeleton } from '../components/SkeletonComponents';
+import { useMemberStatusUpdate } from '../hooks/useOptimisticUpdates';
 import {
   ArrowLeft,
   User,
@@ -116,6 +117,8 @@ export default function MemberDetail() {
       navigate('/members');
     },
   });
+
+  const updateStatus = useMemberStatusUpdate();
 
   const pauseMembershipMutation = useMutation({
     mutationFn: async () => {
@@ -271,13 +274,37 @@ export default function MemberDetail() {
                   <CreditCard className="h-4 w-4 mr-1" />
                   <span className="hidden sm:inline">Payments</span>
                 </button>
-                {member.status === 'active' && (
+                {member.status === 'active' ? (
                   <button
-                    onClick={() => setShowPauseConfirm(true)}
-                    className="inline-flex items-center px-3 py-1.5 text-sm bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                    onClick={() => {
+                      updateStatus.mutate({
+                        memberId: id!,
+                        newStatus: 'inactive',
+                      });
+                    }}
+                    disabled={updateStatus.isPending}
+                    className="inline-flex items-center px-3 py-1.5 text-sm bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Pause className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Pause</span>
+                    <span className="hidden sm:inline">
+                      {updateStatus.isPending ? 'Pausing...' : 'Pause'}
+                    </span>
+                  </button>
+                ) : member.status === 'inactive' && (
+                  <button
+                    onClick={() => {
+                      updateStatus.mutate({
+                        memberId: id!,
+                        newStatus: 'active',
+                      });
+                    }}
+                    disabled={updateStatus.isPending}
+                    className="inline-flex items-center px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">
+                      {updateStatus.isPending ? 'Activating...' : 'Activate'}
+                    </span>
                   </button>
                 )}
                 <button

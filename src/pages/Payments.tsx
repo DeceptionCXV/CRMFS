@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { TableSkeleton } from '../components/SkeletonComponents';
+import { usePaymentStatusUpdate } from '../hooks/useOptimisticUpdates';
 import {
   CreditCard,
   Plus,
@@ -27,6 +28,8 @@ export default function Payments() {
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  const updatePaymentStatus = usePaymentStatusUpdate();
 
   // Fetch all payments with member info
   const { data: payments, isLoading, refetch } = useQuery({
@@ -446,13 +449,47 @@ export default function Payments() {
                         : new Date(payment.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <Link
-                        to={`/members/${payment.member_id}`}
-                        className="inline-flex items-center px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View Member
-                      </Link>
+                      <div className="flex items-center justify-end gap-2">
+                        {payment.payment_status === 'pending' && (
+                          <button
+                            onClick={() => {
+                              updatePaymentStatus.mutate({
+                                paymentId: payment.id,
+                                newStatus: 'completed',
+                              });
+                            }}
+                            disabled={updatePaymentStatus.isPending}
+                            className="inline-flex items-center px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Mark as completed"
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Complete
+                          </button>
+                        )}
+                        {payment.payment_status === 'completed' && (
+                          <button
+                            onClick={() => {
+                              updatePaymentStatus.mutate({
+                                paymentId: payment.id,
+                                newStatus: 'pending',
+                              });
+                            }}
+                            disabled={updatePaymentStatus.isPending}
+                            className="inline-flex items-center px-2 py-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Mark as pending"
+                          >
+                            <Clock className="h-3 w-3 mr-1" />
+                            Pending
+                          </button>
+                        )}
+                        <Link
+                          to={`/member/${payment.member_id}`}
+                          className="inline-flex items-center px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))

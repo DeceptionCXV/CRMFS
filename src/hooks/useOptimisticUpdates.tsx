@@ -15,7 +15,7 @@ export function useMemberStatusUpdate() {
     mutationFn: async ({ memberId, newStatus }: { memberId: string; newStatus: string }) => {
       const { error } = await supabase
         .from('members')
-        .update({ member_status: newStatus })
+        .update({ status: newStatus })
         .eq('id', memberId);
 
       if (error) throw error;
@@ -35,7 +35,7 @@ export function useMemberStatusUpdate() {
       queryClient.setQueryData(['members'], (old: any) => {
         if (!old) return old;
         return old.map((m: any) =>
-          m.id === memberId ? { ...m, member_status: newStatus } : m
+          m.id === memberId ? { ...m, status: newStatus } : m
         );
       });
 
@@ -44,7 +44,7 @@ export function useMemberStatusUpdate() {
         if (!old) return old;
         return {
           ...old,
-          member: { ...old.member, member_status: newStatus },
+          member: { ...old.member, status: newStatus },
         };
       });
 
