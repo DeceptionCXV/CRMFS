@@ -36,18 +36,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('users')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle(); // Use maybeSingle instead of single to avoid errors
 
       console.log('Profile fetch result:', { data, error });
 
       if (error) {
         console.error('Error fetching profile:', error);
-        // Don't throw - just set profile to null
         setProfile(null);
         return;
       }
       
-      setProfile(data);
+      if (data) {
+        setProfile(data);
+      } else {
+        setProfile(null);
+      }
     } catch (error) {
       console.error('Exception fetching profile:', error);
       setProfile(null);
@@ -63,39 +66,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     console.log('AuthProvider mounted - checking session...');
     
-    // Set a timeout to prevent infinite loading
-    const loadingTimeout = setTimeout(() => {
-      console.warn('Auth loading timeout - forcing loading to false');
-      setLoading(false);
-    }, 5000); // 5 second timeout
+    let isMounted = true;
 
     // Check current session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      console.log('Session check result:', { session: !!session, error });
-      
-      clearTimeout(loadingTimeout);
-      
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        fetchProfile(session.user.id).finally(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        console.log('Session check result:', { session: !!session, error });
+        
+        if (!isMounted) return;
+
+        if (error) {
+          console.error('Session error:', error);
+          setUser(null);
+          setProfile(null);
           setLoading(false);
-        });
-      } else {
+          return;
+        }
+
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          await fetchProfile(session.user.id);
+        }
+        
         setLoading(false);
+      } catch (err) {
+        console.error('Session check failed:', err);
+        if (isMounted) {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+        }
       }
-    }).catch((err) => {
-      console.error('Session check failed:', err);
-      clearTimeout(loadingTimeout);
-      setLoading(false);
-    });
+    };
+
+    checkSession();
 
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('Auth state changed:', _event, !!session);
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, !!session);
       
+      if (!isMounted) return;
+
       setUser(session?.user ?? null);
       
       if (session?.user) {
@@ -108,16 +124,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
-      clearTimeout(loadingTimeout);
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const signOut = async () => {
-    console.log('Signing out...');
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
+    try {
+      console.log('Signing out...');
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('Sign out error:', error);
+      }
+      
+      setUser(null);
+      setProfile(null);
+      
+      // Force redirect to login
+      window.location.href = '/login';
+    } catch (err) {
+      console.error('Sign out exception:', err);
+      // Force redirect anyway
+      window.location.href = '/login';
+    }
   };
 
   return (
