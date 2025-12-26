@@ -134,6 +134,60 @@ export default function MemberDetail() {
     },
   });
 
+  // Delete member mutation
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      // Delete in reverse order of dependencies
+      await Promise.all([
+        supabase.from('payments').delete().eq('member_id', id),
+        supabase.from('documents').delete().eq('member_id', id),
+        supabase.from('declarations').delete().eq('member_id', id),
+        supabase.from('medical_info').delete().eq('member_id', id),
+        supabase.from('gp_details').delete().eq('member_id', id),
+        supabase.from('next_of_kin').delete().eq('member_id', id),
+        supabase.from('children').delete().eq('member_id', id),
+        supabase.from('joint_members').delete().eq('member_id', id),
+      ]);
+
+      // Finally delete the member
+      const { error } = await supabase.from('members').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      navigate('/members');
+    },
+  });
+
+  // Mark as deceased mutation
+  const markDeceasedMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('members')
+        .update({ status: 'deceased' })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+      setShowDeceasedConfirm(false);
+    },
+  });
+
+  // Pause membership mutation
+  const pauseMembershipMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('members')
+        .update({ status: 'inactive' })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+      setShowPauseConfirm(false);
+    },
+  });
+
   const handleEdit = () => {
     setEditedData({
       member: { ...memberData?.member },
@@ -256,8 +310,8 @@ export default function MemberDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header - COMPLETE REPLACEMENT */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex items-center space-x-4">
           <Link to="/members" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
             <ArrowLeft className="h-5 w-5 text-gray-600" />
@@ -269,45 +323,96 @@ export default function MemberDetail() {
             <p className="text-sm text-gray-600 mt-1">Member ID: {member.id.slice(0, 8)}</p>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           {getStatusBadge(member.status)}
-          {isEditing ? (
-            <>
-              <button
-                onClick={handleCancel}
-                disabled={updateMutation.isPending}
-                className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-                className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
-              >
-                {updateMutation.isPending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {isEditing ? (
+              <>
+                <button
+                  onClick={handleCancel}
+                  disabled={updateMutation.isPending}
+                  className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={updateMutation.isPending}
+                  className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                >
+                  {updateMutation.isPending ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save
+                    </>
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={handleEdit}
+                  className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Edit</span>
+                </button>
+
+                {/* View Payment History */}
+                <button
+                  onClick={() => setActiveTab('payments')}
+                  className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                  title="View Payment History"
+                >
+                  <History className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Payments</span>
+                </button>
+
+                {/* Pause Membership - Only if active */}
+                {member.status === 'active' && (
+                  <button
+                    onClick={() => setShowPauseConfirm(true)}
+                    className="inline-flex items-center px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors"
+                    title="Pause Membership"
+                  >
+                    <Pause className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Pause</span>
+                  </button>
                 )}
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={handleEdit}
-              className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </button>
-          )}
+
+                {/* Mark as Deceased - Only if not already deceased */}
+                {member.status !== 'deceased' && (
+                  <button
+                    onClick={() => setShowDeceasedConfirm(true)}
+                    className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                    title="Mark as Deceased"
+                  >
+                    <Skull className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Deceased</span>
+                  </button>
+                )}
+
+                {/* Delete Member */}
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="inline-flex items-center px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                  title="Delete Member"
+                >
+                  <Trash2 className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Delete</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -453,6 +558,163 @@ export default function MemberDetail() {
           {activeTab === 'payments' && <PaymentsTab payments={payments} />}
         </div>
       </div>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="p-3 bg-red-100 rounded-full">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Delete Member</h3>
+                <p className="text-sm text-gray-600">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-red-800">
+                Are you sure you want to permanently delete <strong>{member.first_name} {member.last_name}</strong>?
+              </p>
+              <p className="text-sm text-red-700 mt-2">
+                This will delete:
+              </p>
+              <ul className="list-disc list-inside text-sm text-red-700 mt-2 space-y-1">
+                <li>All member information</li>
+                <li>Payment records ({payments.length})</li>
+                <li>Documents ({documents.length})</li>
+                <li>Medical information</li>
+                <li>All related data</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleteMutation.isPending ? (
+                  <span className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Deleting...
+                  </span>
+                ) : (
+                  'Delete Permanently'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MARK DECEASED CONFIRMATION MODAL */}
+      {showDeceasedConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="p-3 bg-gray-100 rounded-full">
+                <Skull className="h-6 w-6 text-gray-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Mark as Deceased</h3>
+                <p className="text-sm text-gray-600">Update member status</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-gray-800">
+                Mark <strong>{member.first_name} {member.last_name}</strong> as deceased?
+              </p>
+              <p className="text-sm text-gray-600 mt-2">
+                This will change the member status to "Deceased". All member information will be preserved for records.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowDeceasedConfirm(false)}
+                disabled={markDeceasedMutation.isPending}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => markDeceasedMutation.mutate()}
+                disabled={markDeceasedMutation.isPending}
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {markDeceasedMutation.isPending ? (
+                  <span className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Updating...
+                  </span>
+                ) : (
+                  'Mark as Deceased'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAUSE MEMBERSHIP CONFIRMATION MODAL */}
+      {showPauseConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="p-3 bg-yellow-100 rounded-full">
+                <Pause className="h-6 w-6 text-yellow-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Pause Membership</h3>
+                <p className="text-sm text-gray-600">Temporarily suspend membership</p>
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-yellow-800">
+                Pause membership for <strong>{member.first_name} {member.last_name}</strong>?
+              </p>
+              <p className="text-sm text-yellow-700 mt-2">
+                This will change the member status to "Inactive". You can reactivate the membership later by editing the member and changing the status back to "Active".
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowPauseConfirm(false)}
+                disabled={pauseMembershipMutation.isPending}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => pauseMembershipMutation.mutate()}
+                disabled={pauseMembershipMutation.isPending}
+                className="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {pauseMembershipMutation.isPending ? (
+                  <span className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Pausing...
+                  </span>
+                ) : (
+                  'Pause Membership'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

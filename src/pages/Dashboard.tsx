@@ -106,7 +106,7 @@ export default function Dashboard() {
 
           return null;
         })
-        .filter(Boolean)
+        .filter((r): r is NonNullable<typeof r> => r !== null)
         .sort((a, b) => a.days_until_renewal - b.days_until_renewal)
         .slice(0, 5); // Limit to 5 most urgent
 
