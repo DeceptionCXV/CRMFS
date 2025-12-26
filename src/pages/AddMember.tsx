@@ -100,7 +100,6 @@ export default function AddMember() {
   const savedApplication = location.state?.savedApplication;
 
   const [currentStep, setCurrentStep] = useState(savedApplication?.current_step || 0);
-  const [highestStepReached, setHighestStepReached] = useState(savedApplication?.current_step || 0);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [childValidationErrors, setChildValidationErrors] = useState<Record<number, Record<string, string>>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -218,15 +217,6 @@ export default function AddMember() {
     setFormData((prev) => ({ ...prev, total_amount: total }));
   }, [formData.main_joining_fee, formData.main_membership_fee, formData.joint_joining_fee, formData.joint_membership_fee, formData.app_type]);
 
-  useEffect(() => {
-    if (formData.app_type === 'single' && currentStep === 2) {
-      setCurrentStep(3);
-    }
-    if (formData.app_type === 'single' && highestStepReached === 2) {
-      setHighestStepReached(3);
-    }
-  }, [formData.app_type, currentStep, highestStepReached]);
-
   const submitMutation = useMutation({
     mutationFn: async () => {
       const { data: member, error: memberError } = await supabase.from('members').insert({
@@ -284,7 +274,26 @@ export default function AddMember() {
       return memberId;
     },
     onSuccess: (memberId) => {
-      navigate(`/members/${memberId}`);
+      // Delete saved application if it exists
+      if (applicationReference) {
+        supabase
+          .from('applications_in_progress')
+          .delete()
+          .eq('application_reference', applicationReference);
+      }
+
+      // Navigate to success page with member details
+      const memberName = formData.app_type === 'joint' 
+        ? `${formData.first_name} ${formData.last_name} & ${formData.joint_first_name} ${formData.joint_last_name}`
+        : `${formData.first_name} ${formData.last_name}`;
+
+      navigate('/registration-success', {
+        state: {
+          memberId,
+          memberName,
+          applicationReference,
+        },
+      });
     },
   });
 
@@ -495,25 +504,21 @@ export default function AddMember() {
     setValidationErrors({});
     setChildValidationErrors({});
 
-    let nextStep: number;
     if (currentStep === 1 && formData.app_type === 'single') {
-      nextStep = 3;
+      setCurrentStep(3);
     } else {
-      nextStep = Math.min(currentStep + 1, steps.length - 1);
+      setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
     }
-
-    setCurrentStep(nextStep);
-    setHighestStepReached((prev: number) => Math.max(prev, nextStep));
   };
 
   const handleBack = () => {
     setValidationErrors({});
     setChildValidationErrors({});
-
+    
     if (currentStep === 3 && formData.app_type === 'single') {
       setCurrentStep(1);
     } else {
-      setCurrentStep((prev: number) => Math.max(prev - 1, 0));
+      setCurrentStep((prev) => Math.max(prev - 1, 0));
     }
   };
 
@@ -573,54 +578,28 @@ export default function AddMember() {
         <p className="mt-1 text-sm text-gray-600">Complete all steps to register a new funeral service member</p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-8">
-        <div className="flex items-center justify-center gap-2">
+      <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
           {visibleSteps.map((step, visualIndex) => {
             const actualIndex = stepIndexMap[visualIndex];
             const Icon = visibleStepIcons[visualIndex];
             const isActive = actualIndex === currentStep;
             const isCompleted = actualIndex < currentStep;
-            const isAccessible = actualIndex <= highestStepReached;
-            const isClickable = isAccessible;
-
-            const handleStepClick = () => {
-              if (isClickable) {
-                setValidationErrors({});
-                setChildValidationErrors({});
-                setCurrentStep(actualIndex);
-              }
-            };
 
             return (
               <div key={step} className="flex items-center">
                 <div className="flex flex-col items-center">
-                  <button
-                    type="button"
-                    onClick={handleStepClick}
-                    disabled={!isClickable}
-                    className={`relative flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all duration-300 ${
-                      isActive
-                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-lg shadow-emerald-300 ring-2 ring-emerald-300 ring-offset-2'
-                        : isCompleted
-                        ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:border-emerald-700 hover:shadow-md cursor-pointer'
-                        : isAccessible
-                        ? 'border-emerald-400 bg-white text-emerald-600 hover:bg-emerald-50 cursor-pointer'
-                        : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
+                      isActive ? 'border-emerald-600 bg-emerald-600 text-white' :
+                      isCompleted ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 bg-white text-gray-400'
+                    }`}>
                     {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-                  </button>
-                  <span className={`mt-2 text-xs font-medium text-center max-w-[80px] leading-tight transition-colors duration-300 ${
-                    isActive ? 'text-emerald-600 font-semibold' : isCompleted ? 'text-emerald-700' : isAccessible ? 'text-emerald-600' : 'text-gray-500'
-                  }`}>
+                  </div>
+                  <span className={`mt-2 text-xs font-medium hidden md:block ${isActive ? 'text-emerald-600' : 'text-gray-500'}`}>
                     {step}
                   </span>
                 </div>
-                {visualIndex < visibleSteps.length - 1 && (
-                  <div className={`h-1 w-12 mx-3 rounded-full transition-all duration-500 ${
-                    isCompleted ? 'bg-emerald-600' : 'bg-gray-300'
-                  }`} />
-                )}
+                {visualIndex < visibleSteps.length - 1 && <div className={`h-0.5 w-8 mx-2 ${isCompleted ? 'bg-emerald-600' : 'bg-gray-300'}`} />}
               </div>
             );
           })}
