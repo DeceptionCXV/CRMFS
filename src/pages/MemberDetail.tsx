@@ -340,8 +340,20 @@ export default function MemberDetail() {
           />
         )}
 
-        {/* Other tabs will go here */}
-        {activeTab !== 'personal' && (
+        {activeTab === 'joint' && (
+          <JointMemberTab jointMember={memberData?.jointMember} />
+        )}
+
+        {activeTab === 'gp' && (
+          <GPDetailsTab gpDetails={memberData?.gpDetails} />
+        )}
+
+        {activeTab === 'declarations' && (
+          <DeclarationsTab declarations={memberData?.declarations} />
+        )}
+
+        {/* Other tabs placeholder */}
+        {!['personal', 'joint', 'gp', 'declarations'].includes(activeTab) && (
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <p className="text-gray-500">Content for {activeTab} tab coming soon...</p>
           </div>
@@ -592,6 +604,226 @@ function ConfirmModal({ title, message, confirmText, confirmColor, onConfirm, on
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Joint Member Tab Component
+function JointMemberTab({ jointMember }: any) {
+  if (!jointMember) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="text-center py-8">
+          <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-500 font-medium">No joint member registered</p>
+          <p className="text-sm text-gray-400 mt-1">
+            This is a single membership or joint member details haven't been added yet.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Two Column Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Personal Details Card */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+            <User className="h-4 w-4 mr-2 text-gray-400" />
+            Partner Details
+          </h3>
+          <dl className="space-y-2">
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Title</dt>
+              <dd className="text-sm text-gray-900 text-right">{jointMember.title || 'N/A'}</dd>
+            </div>
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">First Name</dt>
+              <dd className="text-sm text-gray-900 text-right">{jointMember.first_name || 'N/A'}</dd>
+            </div>
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Last Name</dt>
+              <dd className="text-sm text-gray-900 text-right">{jointMember.last_name || 'N/A'}</dd>
+            </div>
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Date of Birth</dt>
+              <dd className="text-sm text-gray-900 text-right">
+                {jointMember.dob ? new Date(jointMember.dob).toLocaleDateString() : 'N/A'}
+              </dd>
+            </div>
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Relationship</dt>
+              <dd className="text-sm text-gray-900 text-right capitalize">{jointMember.relationship || 'N/A'}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Contact Information Card */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+            <Phone className="h-4 w-4 mr-2 text-gray-400" />
+            Contact Information
+          </h3>
+          <dl className="space-y-2">
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Mobile</dt>
+              <dd className="text-sm text-gray-900 text-right">{jointMember.mobile || 'N/A'}</dd>
+            </div>
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Home Phone</dt>
+              <dd className="text-sm text-gray-900 text-right">{jointMember.home_phone || 'N/A'}</dd>
+            </div>
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Work Phone</dt>
+              <dd className="text-sm text-gray-900 text-right">{jointMember.work_phone || 'N/A'}</dd>
+            </div>
+            <div className="flex justify-between items-start py-1">
+              <dt className="text-xs text-gray-500 font-medium">Email</dt>
+              <dd className="text-sm text-gray-900 text-right">{jointMember.email || 'N/A'}</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// GP Details Tab Component
+function GPDetailsTab({ gpDetails }: any) {
+  if (!gpDetails) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="text-center py-8">
+          <Stethoscope className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-500 font-medium">No GP details recorded</p>
+          <p className="text-sm text-gray-400 mt-1">
+            GP information hasn't been added yet.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* GP Information Card */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+          <Stethoscope className="h-4 w-4 mr-2 text-gray-400" />
+          GP Information
+        </h3>
+        <dl className="space-y-2">
+          <div className="flex justify-between items-start py-1">
+            <dt className="text-xs text-gray-500 font-medium">Practice Name</dt>
+            <dd className="text-sm text-gray-900 text-right">{gpDetails.practice_name || 'N/A'}</dd>
+          </div>
+          <div className="flex justify-between items-start py-1">
+            <dt className="text-xs text-gray-500 font-medium">GP Name</dt>
+            <dd className="text-sm text-gray-900 text-right">{gpDetails.gp_name || 'N/A'}</dd>
+          </div>
+          <div className="flex justify-between items-start py-1">
+            <dt className="text-xs text-gray-500 font-medium">Phone</dt>
+            <dd className="text-sm text-gray-900 text-right">{gpDetails.phone || 'N/A'}</dd>
+          </div>
+          <div className="flex justify-between items-start py-1">
+            <dt className="text-xs text-gray-500 font-medium">Address</dt>
+            <dd className="text-sm text-gray-900 text-right max-w-xs">
+              {gpDetails.address || 'N/A'}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      {/* Additional Notes */}
+      {gpDetails.notes && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{gpDetails.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Declarations Tab Component
+function DeclarationsTab({ declarations }: any) {
+  if (!declarations) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="text-center py-8">
+          <CheckSquare className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-500 font-medium">No declaration recorded</p>
+          <p className="text-sm text-gray-400 mt-1">
+            Terms and conditions haven't been accepted yet.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Acceptance Status Card */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex items-start space-x-3">
+          <div className="flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle className="h-6 w-6 text-green-600" />
+            </div>
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">
+              Terms & Conditions Accepted
+            </h3>
+            <dl className="space-y-1">
+              <div className="flex justify-between items-center text-sm">
+                <dt className="text-gray-500">Accepted on:</dt>
+                <dd className="text-gray-900 font-medium">
+                  {declarations.accepted_at
+                    ? new Date(declarations.accepted_at).toLocaleString()
+                    : 'N/A'}
+                </dd>
+              </div>
+              {declarations.ip_address && (
+                <div className="flex justify-between items-center text-sm">
+                  <dt className="text-gray-500">IP Address:</dt>
+                  <dd className="text-gray-900 font-mono text-xs">{declarations.ip_address}</dd>
+                </div>
+              )}
+              {declarations.user_agent && (
+                <div className="flex justify-between items-start text-sm">
+                  <dt className="text-gray-500">Device:</dt>
+                  <dd className="text-gray-900 text-xs text-right max-w-md truncate">
+                    {declarations.user_agent}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        </div>
+      </div>
+
+      {/* Declaration Text Card */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Declaration Text</h3>
+        <div className="prose prose-sm max-w-none">
+          <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded border border-gray-200">
+            {declarations.declaration_text || 'No declaration text recorded.'}
+          </div>
+        </div>
+      </div>
+
+      {/* Signature */}
+      {declarations.signature && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Signature</h3>
+          <div className="border-2 border-gray-300 rounded p-4 bg-white">
+            <p className="text-2xl font-signature text-gray-900">{declarations.signature}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
