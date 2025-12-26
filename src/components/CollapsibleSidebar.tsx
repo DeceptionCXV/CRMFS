@@ -113,19 +113,19 @@ export default function CollapsibleSidebar() {
                 key={item.name}
                 to={item.to}
                 className={`
-                  flex items-center px-3 py-3 rounded-lg transition-all duration-200 overflow-hidden
+                  relative flex items-center rounded-lg transition-all duration-200 overflow-hidden
                   ${isActive 
                     ? 'bg-emerald-600 text-white' 
                     : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                   }
-                  ${!isExpanded && 'justify-center'}
+                  ${isExpanded ? 'px-3 py-3' : 'px-3 py-3 justify-center'}
                 `}
               >
-                <Icon className="h-5 w-5 flex-shrink-0" />
+                <Icon className="h-5 w-5 flex-shrink-0 relative z-10" />
                 <span 
                   className={`
-                    font-medium whitespace-nowrap transition-all duration-200
-                    ${isExpanded ? 'ml-3 opacity-100 w-auto' : 'ml-0 opacity-0 w-0'}
+                    font-medium whitespace-nowrap transition-all duration-200 absolute left-12
+                    ${isExpanded ? 'opacity-100' : 'opacity-0'}
                   `}
                 >
                   {item.name}
@@ -140,16 +140,16 @@ export default function CollapsibleSidebar() {
           <button
             onClick={handleSignOut}
             className={`
-              w-full flex items-center px-3 py-3 rounded-lg transition-all duration-200 overflow-hidden
+              relative w-full flex items-center rounded-lg transition-all duration-200 overflow-hidden
               text-gray-300 hover:bg-gray-800 hover:text-white
-              ${!isExpanded && 'justify-center'}
+              ${isExpanded ? 'px-3 py-3' : 'px-3 py-3 justify-center'}
             `}
           >
-            <LogOut className="h-5 w-5 flex-shrink-0" />
+            <LogOut className="h-5 w-5 flex-shrink-0 relative z-10" />
             <span 
               className={`
-                font-medium whitespace-nowrap transition-all duration-200
-                ${isExpanded ? 'ml-3 opacity-100 w-auto' : 'ml-0 opacity-0 w-0'}
+                font-medium whitespace-nowrap transition-all duration-200 absolute left-12
+                ${isExpanded ? 'opacity-100' : 'opacity-0'}
               `}
             >
               Sign Out
