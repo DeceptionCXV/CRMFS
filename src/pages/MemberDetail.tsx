@@ -558,6 +558,7 @@ export default function MemberDetail() {
           {activeTab === 'documents' && <DocumentsTab documents={documents} />}
           {activeTab === 'declarations' && <DeclarationsTab declarations={declarations} />}
           {activeTab === 'payments' && <PaymentsTab payments={payments} />}
+          {activeTab === 'activity' && <ActivityLogTab memberId={member.id} />}
         </div>
       </div>
 
