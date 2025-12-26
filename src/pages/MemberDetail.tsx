@@ -32,7 +32,6 @@ export default function MemberDetail() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<any>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showDeceasedConfirm, setShowDeceasedConfirm] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
 
   // Fetch member with all related data
@@ -110,20 +109,6 @@ export default function MemberDetail() {
     },
     onSuccess: () => {
       navigate('/members');
-    },
-  });
-
-  const markDeceasedMutation = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase
-        .from('members')
-        .update({ status: 'deceased' })
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
-      setShowDeceasedConfirm(false);
     },
   });
 
@@ -227,18 +212,8 @@ export default function MemberDetail() {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </Link>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-2xl font-bold text-gray-900 truncate">
                 {member.title} {member.first_name} {member.last_name}
-                <span className="text-gray-400 mx-2">•</span>
-                <span className="text-base font-normal text-gray-500">{member.status}</span>
-                <span className="text-gray-400 mx-2">•</span>
-                <span className="text-base font-normal text-gray-500 capitalize">{member.app_type}</span>
-                {age && (
-                  <>
-                    <span className="text-gray-400 mx-2">•</span>
-                    <span className="text-base font-normal text-gray-500">{age} years old</span>
-                  </>
-                )}
               </h1>
               <p className="text-sm text-gray-500">#{id?.slice(0, 8)}</p>
             </div>
@@ -297,15 +272,6 @@ export default function MemberDetail() {
                   >
                     <Pause className="h-4 w-4 mr-1" />
                     <span className="hidden sm:inline">Pause</span>
-                  </button>
-                )}
-                {member.status !== 'deceased' && (
-                  <button
-                    onClick={() => setShowDeceasedConfirm(true)}
-                    className="inline-flex items-center px-3 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                  >
-                    <Heart className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Deceased</span>
                   </button>
                 )}
                 <button
@@ -392,18 +358,6 @@ export default function MemberDetail() {
           onConfirm={() => deleteMutation.mutate()}
           onCancel={() => setShowDeleteConfirm(false)}
           isLoading={deleteMutation.isPending}
-        />
-      )}
-
-      {showDeceasedConfirm && (
-        <ConfirmModal
-          title="Mark as Deceased"
-          message="This will change the member's status to deceased. You can then create a funeral record for them."
-          confirmText="Mark Deceased"
-          confirmColor="gray"
-          onConfirm={() => markDeceasedMutation.mutate()}
-          onCancel={() => setShowDeceasedConfirm(false)}
-          isLoading={markDeceasedMutation.isPending}
         />
       )}
 
