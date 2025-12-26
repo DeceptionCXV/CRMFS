@@ -3,7 +3,7 @@
 > A comprehensive member and payment management system built for Falkirk Central Mosque's death committee (Central Region Muslim Funeral Service).
 
 **Built by:** [Kelpie AI](https://kelpieai.co.uk)  
-**Version:** 0.1.5  
+**Version:** 0.1.6.3  
 **Status:** Active Development  
 **Tech Stack:** React + TypeScript + Supabase + Tailwind CSS
 
@@ -45,13 +45,25 @@ This CRM serves the death committee's operational needs by:
   - Automated payment calculation
   - Review and submit
 - **Save Progress Feature** - Resume incomplete registrations
-- **Member Profiles** with comprehensive data tabs
-- **Edit Mode** for updating member information
+- **Comprehensive Member Detail Pages** with:
+  - Modern Supabase-style collapsible navigation
+  - Sub-navigation sidebar with 10 information tabs
+  - Personal Info tab (editable)
+  - Joint Member tab (partner details)
+  - Children tab (add/edit/delete with premium modals)
+  - Next of Kin tab (emergency contacts with CRUD)
+  - GP Details tab (medical practitioner info)
+  - Medical Info tab (conditions/allergies/medications)
+  - Documents tab (file management placeholder)
+  - Declarations tab (terms acceptance with timestamps)
+  - Payments tab (transaction history with summary cards)
+  - Activity Log tab (complete audit trail with timeline)
 - **Member Actions:**
-  - View payment history
+  - Edit mode with inline field editing
+  - View payment history with status badges
   - Pause membership (temporary suspension)
   - Mark as deceased (preserves records)
-  - Delete member (removes all data)
+  - Delete member (removes all data with confirmation)
 
 ### 💰 Payment Management
 - Payment recording and tracking
@@ -59,9 +71,10 @@ This CRM serves the death committee's operational needs by:
 - Automatic fee calculation based on member age
 - Payment status tracking (Pending, Completed, Overdue, Failed, Refunded)
 - Late fee management
+- **Payment Summary Cards** - Total paid, pending, transaction count
 - **Late Payment Widget** - Highlights overdue payments
 - Search and filter by member, status, or date range
-- Payment history per member
+- Payment history per member with colour-coded status
 
 ### 📊 Dashboard & Analytics
 - Real-time statistics:
@@ -76,15 +89,68 @@ This CRM serves the death committee's operational needs by:
   - Direct links to member profiles
 - Recent member activity feed
 
+### 💀 Deceased Member Management
+- Comprehensive funeral record system
+- Deceased member list with search and filter
+- **7 Information Tabs per Deceased Member:**
+  - Overview (deceased info, family contacts)
+  - Funeral Details (burial information, dates, locations)
+  - Documents (death certificates, burial permits)
+  - Family Contacts (relatives with relationships)
+  - Expenses (itemised funeral costs)
+  - Payments (contributions and transactions)
+  - Activity Log (complete audit trail)
+- Family contact management
+- Expense tracking with categories
+- Payment processing for funeral costs
+- Document management for certificates
+
+### 📝 Activity Logging & Audit Trail
+- Automatic activity tracking on all database operations
+- Database triggers on all major tables (members, payments, deceased, etc.)
+- **Activity Log Features:**
+  - Complete timeline view with relative timestamps ("2 hours ago")
+  - Colour-coded action types (payments, updates, status changes)
+  - Expandable details showing before/after values
+  - Statistics cards (total events, payments, updates)
+  - Icon-based visual indicators
+  - 50 most recent events per member
+- **Tracked Actions:**
+  - Member creation and updates
+  - Status changes
+  - Payment recording
+  - Deceased marking
+  - Funeral arrangements
+  - Expense additions
+  - Document uploads
+  - Contact additions
+
 ### 🎨 User Experience
+- **Modern Navigation System:**
+  - Collapsible main sidebar (64px collapsed, 256px expanded)
+  - Supabase-style smooth animations
+  - Hover-to-expand functionality
+  - Mobile hamburger menu
+  - Context-aware sub-navigation for detail pages
+- **Premium Form Modals** with:
+  - Professional validation with inline error messages
+  - Auto-focus on first input field
+  - Loading states during save operations
+  - Keyboard shortcuts (ESC to close, Enter to submit)
+  - Smooth fade-in animations
+  - Date pickers for date fields
+  - Dropdowns for constrained values
+  - Disabled states during operations
 - Responsive design (desktop, tablet, mobile)
 - Toast notifications for user feedback
 - Loading states and skeleton screens
-- Empty states with helpful guidance
+- Empty states with helpful guidance and call-to-action buttons
 - Error boundaries for graceful failure handling
 - Custom 404 page
 - Islamic-themed colour scheme (emerald green + gold)
-- Professional Montserrat typography
+- Professional Poppins typography
+- Proper spacing and breathing room (32px top padding)
+- Compact, information-dense layouts
 
 ### 📈 Reports (Basic)
 - Report generation framework
@@ -109,9 +175,17 @@ Built on Supabase PostgreSQL with the following tables:
 - **payments** - Transaction records
 - **fee_structure** - Age-based pricing
 
+### Deceased Management Tables
+- **deceased** - Deceased member records
+- **funeral_details** - Burial information
+- **funeral_contacts** - Family contacts
+- **funeral_expenses** - Itemised costs
+- **funeral_payments** - Contributions
+
 ### Administrative Tables
 - **documents** - File attachments
 - **declarations** - Terms acceptance records
+- **activity_log** - Automatic audit trail with triggers
 
 All tables include Row Level Security (RLS) policies for data protection.
 
@@ -134,12 +208,13 @@ All tables include Row Level Security (RLS) policies for data protection.
   - Authentication
   - Row Level Security
   - Real-time subscriptions
+  - Database triggers for activity logging
   - RESTful API
 
 ### Developer Tools
 - **ESLint** - Code linting
 - **PostCSS** - CSS processing
-- **Git** - Version control
+- **Git** - Version control with automatic version incrementing
 
 ---
 
@@ -159,6 +234,14 @@ All tables include Row Level Security (RLS) policies for data protection.
 
 **Progress can be saved at any step and resumed later.**
 
+### Member Detail Management
+1. Select member from list or dashboard
+2. Navigate through 10 information tabs via sub-sidebar
+3. View or edit any information section
+4. Add children, emergency contacts, or medical info via premium modals
+5. Track complete payment and activity history
+6. Perform actions (edit, pause, delete) from header buttons
+
 ### Payment Processing
 1. Select member from dashboard
 2. Navigate to payments tab
@@ -167,6 +250,15 @@ All tables include Row Level Security (RLS) policies for data protection.
 5. Generate receipt (planned)
 6. Track payment status
 7. Monitor renewals
+
+### Deceased Member Management
+1. Mark member as deceased from member detail page
+2. Navigate to Deceased Members section
+3. Create funeral record
+4. Add family contacts
+5. Track expenses and payments
+6. Upload required documents
+7. View complete audit trail
 
 ### Membership Renewal
 1. System identifies members approaching anniversary
@@ -180,6 +272,8 @@ All tables include Row Level Security (RLS) policies for data protection.
 ## 🎯 Planned Features
 
 ### Phase 2 (Q1 2025)
+- [ ] Record Death Form (quick workflow to create funeral records)
+- [ ] User authentication with role-based access control
 - [ ] Document upload and storage integration
 - [ ] PDF receipt generation
 - [ ] Email notifications for renewals
@@ -194,8 +288,7 @@ All tables include Row Level Security (RLS) policies for data protection.
 - [ ] Mobile app (React Native)
 - [ ] WhatsApp integration for notifications
 - [ ] Advanced search with filters
-- [ ] Audit logs and activity tracking
-- [ ] Role-based access control (Admin, Treasurer, Volunteer)
+- [ ] Multi-user role system (Admin, Treasurer, Volunteer)
 - [ ] Donation tracking module
 - [ ] Automated backup system
 
@@ -219,27 +312,32 @@ All tables include Row Level Security (RLS) policies for data protection.
 ### Local Development
 
 1. **Clone the repository**
-   bash
+   ```bash
    git clone https://github.com/yourusername/CRMFS.git
    cd CRMFS
+   ```
 
 2. **Install dependencies**
-   bash
+   ```bash
    npm install
+   ```
 
 3. **Configure environment variables**
-   bash
+   ```bash
    # Create .env file
    VITE_SUPABASE_URL=your_supabase_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
 
 4. **Run development server**
-   bash
+   ```bash
    npm run dev
+   ```
 
 5. **Build for production**
-   bash
+   ```bash
    npm run build
+   ```
 
 ### Database Setup
 
@@ -247,7 +345,8 @@ All tables include Row Level Security (RLS) policies for data protection.
 2. Run the provided SQL schema (see `/supabase` directory)  
 3. Configure Row Level Security policies  
 4. Set up authentication provider  
-5. Update environment variables  
+5. Run activity log trigger creation script
+6. Update environment variables  
 
 ---
 
@@ -257,7 +356,7 @@ All tables include Row Level Security (RLS) policies for data protection.
 The system uses Falkirk Central Mosque's colour scheme:
 - **Primary:** Emerald Green (#10b981) - Islamic tradition
 - **Secondary:** Gold (#eab308) - Accent colour
-- **Font:** Montserrat - Modern, readable typography
+- **Font:** Poppins - Modern, readable typography
 
 ### Theme Modification
 1. **Font**: Update `src/index.css` and `tailwind.config.js`
@@ -270,11 +369,13 @@ See `STYLING_GUIDE.md` for detailed instructions.
 
 ## 📊 Project Metrics
 
-- **Total Components:** 20+
-- **Database Tables:** 10
-- **Lines of Code:** ~15,000
-- **Pages:** 8
-- **API Endpoints:** 40+ (via Supabase)
+- **Total Components:** 35+
+- **Database Tables:** 15
+- **Lines of Code:** ~20,000
+- **Pages:** 12
+- **API Endpoints:** 60+ (via Supabase)
+- **Member Detail Tabs:** 10
+- **Deceased Detail Tabs:** 7
 - **Test Coverage:** TBD
 
 ---
@@ -323,16 +424,64 @@ This system handles sensitive personal data. Security measures include:
 - Row Level Security on all database tables
 - Secure authentication with Supabase Auth
 - Environment variable protection
+- Automatic activity logging for audit compliance
 - Regular security audits
 - GDPR compliance considerations
 
-**Report security vulnerabilities to:** security@kelpieai.co.uk
+**Report security vulnerabilities to:** info@kelpieai.co.uk
 
 ---
 
 ## 📈 Version History
 
-### v0.1.5 (Current - 26 December 2025)
+### v0.1.6.3 (Current - 26 December 2024)
+- **Major UI/UX Overhaul:**
+  - Implemented Supabase-style collapsible navigation (64px collapsed, 256px expanded)
+  - Smooth hover-to-expand animations with fixed icon positions
+  - Mobile hamburger menu with overlay
+  - Proper content padding (32px top, responsive)
+- **Member Detail Page Redesign:**
+  - Complete rebuild with modern sub-navigation sidebar (224px compact)
+  - 10 fully functional tabs with premium UX
+  - Compact header (single line, no redundant info)
+  - Quick info bar with 4 stat cards
+  - Two-column layouts for efficient space usage
+  - Professional card-based design with consistent spacing
+- **Premium CRUD Modals:**
+  - Children management (add/edit/delete with validation)
+  - Next of Kin management (emergency contacts)
+  - Medical Info management (conditions/allergies/medications)
+  - Professional form validation with inline errors
+  - Auto-focus, keyboard shortcuts, loading states
+  - Smooth fade-in animations
+  - Date pickers and dropdowns for constrained values
+- **Activity Logging System:**
+  - Automatic database triggers on all tables
+  - Complete audit trail with timeline view
+  - Colour-coded action types with icons
+  - Relative timestamps ("2 hours ago")
+  - Statistics cards and expandable details
+  - Tracks: member updates, payments, status changes, deceased records
+- **Payments Tab Enhancement:**
+  - Summary cards (Total Paid, Pending, Transaction Count)
+  - Improved payment history list with status badges
+  - Hover effects and better visual hierarchy
+- **Deceased Member System:**
+  - Complete funeral management with 7 information tabs
+  - Family contact tracking
+  - Expense and payment management
+  - Document tracking for certificates
+  - Activity logging
+- **Visual Polish:**
+  - Consistent emerald green theme throughout
+  - Professional Poppins typography
+  - Smooth transitions (200ms duration standard)
+  - Information-dense layouts without clutter
+  - Empty states with helpful guidance
+  - Loading states everywhere
+  - Proper spacing and visual hierarchy
+
+### v0.1.5 (24 December 2024)
 - Complete member registration wizard
 - Payment management system
 - Dashboard with analytics
@@ -342,7 +491,7 @@ This system handles sensitive personal data. Security measures include:
 - Responsive mobile design
 - Toast notifications and UX polish
 
-### v0.1.4 (24 December 2025)
+### v0.1.4 (22 December 2024)
 - Initial MVP release
 - Basic CRUD operations
 - Authentication system
