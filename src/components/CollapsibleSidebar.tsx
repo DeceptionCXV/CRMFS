@@ -118,13 +118,13 @@ export default function CollapsibleSidebar() {
                     ? 'bg-emerald-600 text-white' 
                     : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                   }
-                  ${isExpanded ? 'px-3 py-3' : 'px-3 py-3 justify-center'}
+                  pl-3 pr-3 py-3
                 `}
               >
                 <Icon className="h-5 w-5 flex-shrink-0 relative z-10" />
                 <span 
                   className={`
-                    font-medium whitespace-nowrap transition-all duration-200 absolute left-12
+                    font-medium whitespace-nowrap transition-all duration-200 ml-3
                     ${isExpanded ? 'opacity-100' : 'opacity-0'}
                   `}
                 >
@@ -142,13 +142,13 @@ export default function CollapsibleSidebar() {
             className={`
               relative w-full flex items-center rounded-lg transition-all duration-200 overflow-hidden
               text-gray-300 hover:bg-gray-800 hover:text-white
-              ${isExpanded ? 'px-3 py-3' : 'px-3 py-3 justify-center'}
+              pl-3 pr-3 py-3
             `}
           >
             <LogOut className="h-5 w-5 flex-shrink-0 relative z-10" />
             <span 
               className={`
-                font-medium whitespace-nowrap transition-all duration-200 absolute left-12
+                font-medium whitespace-nowrap transition-all duration-200 ml-3
                 ${isExpanded ? 'opacity-100' : 'opacity-0'}
               `}
             >
