@@ -26,7 +26,7 @@ export default function CompactLayout({ children, showSubNav = false, subNav }: 
       <main className="flex-1 overflow-x-hidden">
         <div className="max-w-[1920px] mx-auto">
           {/* Add padding to account for mobile hamburger */}
-          <div className="pt-16 md:pt-0 px-4 md:px-6 lg:px-8 py-6">
+          <div className="pt-20 md:pt-8 px-4 md:px-6 lg:px-8 py-6">
             {/* Use Outlet for nested routes, or children if passed directly */}
             {children || <Outlet />}
           </div>
