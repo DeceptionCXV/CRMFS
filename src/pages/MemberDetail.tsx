@@ -1531,3 +1531,238 @@ function DeclarationItem({ label, checked }: any) {
     </div>
   );
 }
+
+interface ActivityLogTabProps {
+  memberId: string;
+}
+
+function ActivityLogTab({ memberId }: ActivityLogTabProps) {
+  const { data: activityLog, isLoading } = useQuery({
+    queryKey: ['activity-log', memberId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('activity_log')
+        .select('*')
+        .eq('member_id', memberId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
+      return data || [];
+    },
+  });
+
+  const getActionIcon = (actionType: string) => {
+    const icons = {
+      created: CheckCircle,
+      updated: Edit,
+      member_edited: Edit,
+      status_changed: AlertCircle,
+      payment_received: DollarSign,
+      payment_recorded: DollarSign,
+      document_uploaded: FileText,
+      marked_deceased: AlertCircle,
+      funeral_arranged: Activity,
+      expense_added: DollarSign,
+      contact_added: User,
+      note_added: FileText,
+    };
+    
+    return icons[actionType as keyof typeof icons] || Activity;
+  };
+
+  const getActionColor = (actionType: string) => {
+    const colors = {
+      created: 'bg-green-100 text-green-800 border-green-200',
+      updated: 'bg-blue-100 text-blue-800 border-blue-200',
+      member_edited: 'bg-blue-100 text-blue-800 border-blue-200',
+      status_changed: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      payment_received: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      payment_recorded: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      document_uploaded: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      marked_deceased: 'bg-red-100 text-red-800 border-red-200',
+      funeral_arranged: 'bg-purple-100 text-purple-800 border-purple-200',
+      expense_added: 'bg-orange-100 text-orange-800 border-orange-200',
+      contact_added: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+      note_added: 'bg-gray-100 text-gray-800 border-gray-200',
+    };
+    
+    return colors[actionType as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-200';
+  };
+
+  const formatActionType = (actionType: string) => {
+    return actionType
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  const formatRelativeTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    
+    return date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+      </div>
+    );
+  }
+
+  if (!activityLog || activityLog.length === 0) {
+    return (
+      <div className="text-center py-12 bg-gray-50 rounded-lg">
+        <Activity className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+        <p className="text-gray-500 font-medium">No activity recorded yet</p>
+        <p className="text-sm text-gray-400 mt-1">
+          All changes to this member will appear here
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Activity Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <p className="text-sm text-blue-600 font-medium">Total Events</p>
+          <p className="text-2xl font-bold text-blue-900">{activityLog.length}</p>
+        </div>
+        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+          <p className="text-sm text-green-600 font-medium">Payments</p>
+          <p className="text-2xl font-bold text-green-900">
+            {activityLog.filter(a => a.action_type.includes('payment')).length}
+          </p>
+        </div>
+        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+          <p className="text-sm text-purple-600 font-medium">Updates</p>
+          <p className="text-2xl font-bold text-purple-900">
+            {activityLog.filter(a => a.action_type === 'updated' || a.action_type === 'member_edited').length}
+          </p>
+        </div>
+        <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+          <p className="text-sm text-orange-600 font-medium">Last Activity</p>
+          <p className="text-sm font-bold text-orange-900">
+            {formatRelativeTime(activityLog[0].created_at)}
+          </p>
+        </div>
+      </div>
+
+      {/* Activity Timeline */}
+      <div className="relative">
+        {/* Timeline line */}
+        <div className="absolute left-[27px] top-0 bottom-0 w-0.5 bg-gray-200"></div>
+
+        {/* Activity items */}
+        <div className="space-y-6">
+          {activityLog.map((activity, index) => {
+            const Icon = getActionIcon(activity.action_type);
+            const isToday = new Date(activity.created_at).toDateString() === new Date().toDateString();
+            
+            return (
+              <div key={activity.id} className="relative pl-16">
+                {/* Timeline dot */}
+                <div className={`absolute left-0 w-14 h-14 rounded-full flex items-center justify-center border-4 border-white shadow-md ${getActionColor(activity.action_type)}`}>
+                  <Icon className="h-6 w-6" />
+                </div>
+
+                {/* Activity card */}
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getActionColor(activity.action_type)}`}>
+                          {formatActionType(activity.action_type)}
+                        </span>
+                        {isToday && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            Today
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-gray-900 font-medium">{activity.description}</p>
+                    </div>
+                  </div>
+
+                  {/* Metadata */}
+                  <div className="flex items-center gap-4 text-sm text-gray-500 mt-3">
+                    <div className="flex items-center">
+                      <Clock className="h-4 w-4 mr-1" />
+                      {formatRelativeTime(activity.created_at)}
+                    </div>
+                    {activity.user_email && (
+                      <div className="flex items-center">
+                        <User className="h-4 w-4 mr-1" />
+                        {activity.user_email}
+                      </div>
+                    )}
+                    <div className="flex items-center">
+                      <FileText className="h-4 w-4 mr-1" />
+                      {activity.entity_type.replace('_', ' ')}
+                    </div>
+                  </div>
+
+                  {/* Show changes (if available) */}
+                  {(activity.old_values || activity.new_values) && (
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900 font-medium">
+                        View details
+                      </summary>
+                      <div className="mt-2 p-3 bg-gray-50 rounded border border-gray-200">
+                        {activity.old_values && (
+                          <div className="mb-2">
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Previous:</p>
+                            <pre className="text-xs text-gray-600 overflow-x-auto">
+                              {JSON.stringify(activity.old_values, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        {activity.new_values && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Updated:</p>
+                            <pre className="text-xs text-gray-600 overflow-x-auto">
+                              {JSON.stringify(activity.new_values, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Load more placeholder */}
+      {activityLog.length >= 100 && (
+        <div className="text-center py-4">
+          <p className="text-sm text-gray-500">
+            Showing last 100 events. Older activity has been archived.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default ActivityLogTab;
