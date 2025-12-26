@@ -6,7 +6,7 @@ import {
   Users,
   CreditCard,
   FileText,
-  Skull,
+  FileHeart,
   LogOut,
   Menu,
   X,
@@ -28,7 +28,7 @@ export default function Layout() {
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Members', href: '/members', icon: Users },
     { name: 'Payments', href: '/payments', icon: CreditCard },
-    { name: 'Deceased', href: '/deceased', icon: Skull },
+    { name: 'Deceased', href: '/deceased', icon: FileHeart },
     { name: 'Reports', href: '/reports', icon: FileText },
   ];
 
