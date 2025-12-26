@@ -12,7 +12,6 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  TrendingUp,
 } from 'lucide-react';
 
 export default function DeceasedMembers() {
