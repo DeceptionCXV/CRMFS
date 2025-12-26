@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import {
   ArrowLeft,
-  Skull,
+  FileHeart,
   Calendar,
   MapPin,
   Phone,
@@ -139,7 +139,7 @@ export default function DeceasedDetail() {
   };
 
   const tabs = [
-    { id: 'details', label: 'Death Details', icon: Skull },
+    { id: 'details', label: 'Death Details', icon: FileHeart },
     { id: 'funeral', label: 'Funeral Process', icon: Calendar },
     { id: 'expenses', label: 'Expenses', icon: DollarSign, count: deceasedData?.expenses?.length },
     { id: 'payments', label: 'Payments', icon: DollarSign, count: deceasedData?.payments?.length },
