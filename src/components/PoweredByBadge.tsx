@@ -4,10 +4,9 @@ export default function PoweredByBadge() {
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
-     <p className="text-xs font-medium whitespace-nowrap">
-       Powered by Kelpie AI | v0.1.5.{buildNumber} | DEMO PURPOSES ONLY
-        </p>
-      </div>
+      <p className="text-xs font-medium text-gray-400 whitespace-nowrap">
+        Powered by Kelpie AI | v0.1.6.1.{buildNumber}
+      </p>
     </div>
   );
 }
