@@ -84,7 +84,7 @@ This CRM serves the death committee's operational needs by:
 - Error boundaries for graceful failure handling
 - Custom 404 page
 - Islamic-themed color scheme (emerald green + gold)
-- Professional Montserrar typography
+- Professional Montserrat typography
 
 ### 📈 Reports (Basic)
 - Report generation framework
@@ -262,7 +262,7 @@ All tables include Row Level Security (RLS) policies for data protection.
 The system uses Falkirk Central Mosque's color scheme:
 - **Primary:** Emerald Green (#10b981) - Islamic tradition
 - **Secondary:** Gold (#eab308) - Accent color
-- **Font:** Montserrar - Modern, readable typography
+- **Font:** Montserrat - Modern, readable typography
 
 ### Theme Modification
 1. **Font**: Update `src/index.css` and `tailwind.config.js`
