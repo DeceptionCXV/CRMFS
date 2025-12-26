@@ -169,3 +169,131 @@ export interface Declaration {
   declaration_sig_2: boolean;
   signed_at: string;
 }
+
+// ADD THESE INTERFACES TO YOUR src/lib/supabase.ts FILE
+// Place them after the existing interfaces
+
+export interface DeceasedRecord {
+  id: string;
+  member_id: string;
+  
+  // Death Details
+  date_of_death: string;
+  time_of_death?: string;
+  place_of_death?: string;
+  cause_of_death?: string;
+  death_certificate_number?: string;
+  
+  // Notification
+  notified_by?: string;
+  notified_by_relationship?: string;
+  notified_by_contact?: string;
+  notification_date: string;
+  
+  // Funeral Arrangements
+  funeral_date?: string;
+  funeral_time?: string;
+  funeral_location?: string;
+  
+  // Islamic Process
+  ghusl_performed_by?: string;
+  ghusl_performed_date?: string;
+  kafan_provided: boolean;
+  kafan_cost: number;
+  
+  // Janazah
+  janazah_led_by?: string;
+  janazah_location?: string;
+  janazah_attendees?: number;
+  
+  // Burial
+  burial_date?: string;
+  burial_time?: string;
+  burial_location?: string;
+  burial_plot_number?: string;
+  grave_number?: string;
+  burial_authority?: string;
+  
+  // Transportation
+  hearse_company?: string;
+  hearse_cost: number;
+  transport_from?: string;
+  transport_notes?: string;
+  
+  // Financial
+  total_cost: number;
+  amount_paid: number;
+  amount_outstanding: number;
+  payment_status: 'pending' | 'partial' | 'completed';
+  payment_notes?: string;
+  
+  // Administrative
+  handled_by?: string;
+  coordinator_name?: string;
+  coordinator_phone?: string;
+  
+  // Additional
+  family_wishes?: string;
+  complications?: string;
+  notes?: string;
+  
+  // Status
+  status: 'reported' | 'arranged' | 'in_progress' | 'completed' | 'closed';
+  completed_date?: string;
+  
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+}
+
+export interface FuneralExpense {
+  id: string;
+  deceased_record_id: string;
+  expense_type: string;
+  description: string;
+  amount: number;
+  paid_by?: string;
+  receipt_number?: string;
+  paid_date?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface FuneralPayment {
+  id: string;
+  deceased_record_id: string;
+  amount: number;
+  payment_method?: string;
+  payment_date: string;
+  received_by?: string;
+  receipt_number?: string;
+  payer_name?: string;
+  payer_relationship?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface FuneralContact {
+  id: string;
+  deceased_record_id: string;
+  contact_name: string;
+  relationship?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  is_primary_contact: boolean;
+  notes?: string;
+  created_at: string;
+}
+
+export interface FuneralChecklist {
+  id: string;
+  deceased_record_id: string;
+  task_name: string;
+  task_category: string;
+  completed: boolean;
+  completed_by?: string;
+  completed_at?: string;
+  notes?: string;
+  created_at: string;
+}
