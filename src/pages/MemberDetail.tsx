@@ -27,7 +27,6 @@ import {
   Skull,
   History,
   AlertTriangle,
-  Activity,
   Clock,
   PoundSterling,
   AlertCircle,
