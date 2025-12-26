@@ -4,7 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
-import Layout from './components/Layout';
+import CompactLayout from './components/CompactLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import MemberList from './pages/MemberList';
@@ -43,7 +43,7 @@ function App() {
                   path="/"
                   element={
                     <ProtectedRoute>
-                      <Layout />
+                      <CompactLayout />
                     </ProtectedRoute>
                   }
                 >
