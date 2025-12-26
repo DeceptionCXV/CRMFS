@@ -6,6 +6,7 @@ import {
   Users,
   CreditCard,
   FileText,
+  Skull,
   LogOut,
   Menu,
   X,
