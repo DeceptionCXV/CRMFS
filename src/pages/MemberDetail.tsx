@@ -287,6 +287,7 @@ export default function MemberDetail() {
     { id: 'documents', label: 'Documents', icon: Upload, count: memberData?.documents?.length },
     { id: 'declarations', label: 'Declarations', icon: CheckSquare },
     { id: 'payments', label: 'Payments', icon: CreditCard, count: memberData?.payments?.length },
+    { id: 'activity', label: 'Activity Log', icon: Activity },
   ];
 
   if (isLoading) {
