@@ -170,9 +170,6 @@ export interface Declaration {
   signed_at: string;
 }
 
-// ADD THESE INTERFACES TO YOUR src/lib/supabase.ts FILE
-// Place them after the existing interfaces
-
 export interface DeceasedRecord {
   id: string;
   member_id: string;
