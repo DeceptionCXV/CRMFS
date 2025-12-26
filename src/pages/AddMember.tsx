@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import DateInput from '../components/DateInput';
 import {
@@ -98,6 +98,7 @@ interface FormData {
 export default function AddMember() {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const savedApplication = location.state?.savedApplication;
 
   const [currentStep, setCurrentStep] = useState(savedApplication?.current_step || 0);
@@ -283,17 +284,25 @@ export default function AddMember() {
 
       return memberId;
     },
-    onSuccess: (memberId) => {
-      // Delete saved application if it exists
+    onSuccess: async (memberId) => {
       if (applicationReference) {
-        supabase
-          .from('applications_in_progress')
-          .delete()
-          .eq('application_reference', applicationReference);
+        try {
+          const { error: deleteError } = await supabase
+            .from('applications_in_progress')
+            .delete()
+            .eq('application_reference', applicationReference);
+
+          if (deleteError) {
+            console.error('Failed to delete saved application:', deleteError);
+          } else {
+            queryClient.invalidateQueries({ queryKey: ['applications-in-progress'] });
+          }
+        } catch (error) {
+          console.error('Error deleting saved application:', error);
+        }
       }
 
-      // Navigate to success page with member details
-      const memberName = formData.app_type === 'joint' 
+      const memberName = formData.app_type === 'joint'
         ? `${formData.first_name} ${formData.last_name} & ${formData.joint_first_name} ${formData.joint_last_name}`
         : `${formData.first_name} ${formData.last_name}`;
 
@@ -310,10 +319,8 @@ export default function AddMember() {
   const saveProgressMutation = useMutation({
     mutationFn: async () => {
       setIsSaving(true);
-      
-      // Check if this is an update or new save
+
       if (applicationReference) {
-        // Update existing
         const { error } = await supabase
           .from('applications_in_progress')
           .update({
@@ -326,13 +333,13 @@ export default function AddMember() {
             main_mobile: formData.mobile,
             joint_first_name: formData.joint_first_name,
             joint_last_name: formData.joint_last_name,
+            last_saved_at: new Date().toISOString(),
           })
           .eq('application_reference', applicationReference);
-        
+
         if (error) throw error;
         return applicationReference;
       } else {
-        // Create new
         const { data, error } = await supabase
           .from('applications_in_progress')
           .insert({
@@ -346,10 +353,11 @@ export default function AddMember() {
             joint_first_name: formData.joint_first_name,
             joint_last_name: formData.joint_last_name,
             status: 'in_progress',
+            last_saved_at: new Date().toISOString(),
           })
           .select('application_reference')
           .single();
-        
+
         if (error) throw error;
         return data.application_reference;
       }
