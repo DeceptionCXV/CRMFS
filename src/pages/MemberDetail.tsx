@@ -12,7 +12,6 @@ import {
   Heart,
   Calendar,
   Phone,
-  Mail,
   MapPin,
   Edit,
   Save,
@@ -187,7 +186,7 @@ export default function MemberDetail() {
     );
   }
 
-  const { member, jointMember, children, payments } = memberData;
+  const { member, children, payments } = memberData;
   const age = calculateAge(member.dob);
 
   return (
@@ -435,19 +434,19 @@ function PersonalInfoTab({ member, isEditing, updateField }: any) {
               isEditing={isEditing}
               type="select"
               options={['Mr', 'Mrs', 'Miss', 'Ms', 'Dr']}
-              onChange={(val) => updateField?.('title', val)}
+              onChange={(val: any) => updateField?.('title', val)}
             />
             <InfoRow
               label="First Name"
               value={member?.first_name}
               isEditing={isEditing}
-              onChange={(val) => updateField?.('first_name', val)}
+              onChange={(val: any) => updateField?.('first_name', val)}
             />
             <InfoRow
               label="Last Name"
               value={member?.last_name}
               isEditing={isEditing}
-              onChange={(val) => updateField?.('last_name', val)}
+              onChange={(val: any) => updateField?.('last_name', val)}
             />
             <InfoRow
               label="Date of Birth"
@@ -455,7 +454,7 @@ function PersonalInfoTab({ member, isEditing, updateField }: any) {
               displayValue={member?.dob ? new Date(member.dob).toLocaleDateString() : 'N/A'}
               isEditing={isEditing}
               type="date"
-              onChange={(val) => updateField?.('dob', val)}
+              onChange={(val: any) => updateField?.('dob', val)}
             />
             <InfoRow
               label="Status"
@@ -463,7 +462,7 @@ function PersonalInfoTab({ member, isEditing, updateField }: any) {
               isEditing={isEditing}
               type="select"
               options={['pending', 'active', 'inactive', 'deceased']}
-              onChange={(val) => updateField?.('status', val)}
+              onChange={(val: any) => updateField?.('status', val)}
             />
           </dl>
         </div>
@@ -479,26 +478,26 @@ function PersonalInfoTab({ member, isEditing, updateField }: any) {
               label="Mobile"
               value={member?.mobile}
               isEditing={isEditing}
-              onChange={(val) => updateField?.('mobile', val)}
+              onChange={(val: any) => updateField?.('mobile', val)}
             />
             <InfoRow
               label="Home Phone"
               value={member?.home_phone}
               isEditing={isEditing}
-              onChange={(val) => updateField?.('home_phone', val)}
+              onChange={(val: any) => updateField?.('home_phone', val)}
             />
             <InfoRow
               label="Work Phone"
               value={member?.work_phone}
               isEditing={isEditing}
-              onChange={(val) => updateField?.('work_phone', val)}
+              onChange={(val: any) => updateField?.('work_phone', val)}
             />
             <InfoRow
               label="Email"
               value={member?.email}
               isEditing={isEditing}
               type="email"
-              onChange={(val) => updateField?.('email', val)}
+              onChange={(val: any) => updateField?.('email', val)}
             />
           </dl>
         </div>
@@ -515,25 +514,25 @@ function PersonalInfoTab({ member, isEditing, updateField }: any) {
             label="Address Line 1"
             value={member?.address_line_1}
             isEditing={isEditing}
-            onChange={(val) => updateField?.('address_line_1', val)}
+            onChange={(val: any) => updateField?.('address_line_1', val)}
           />
           <InfoRow
             label="Town"
             value={member?.town}
             isEditing={isEditing}
-            onChange={(val) => updateField?.('town', val)}
+            onChange={(val: any) => updateField?.('town', val)}
           />
           <InfoRow
             label="City"
             value={member?.city}
             isEditing={isEditing}
-            onChange={(val) => updateField?.('city', val)}
+            onChange={(val: any) => updateField?.('city', val)}
           />
           <InfoRow
             label="Postcode"
             value={member?.postcode}
             isEditing={isEditing}
-            onChange={(val) => updateField?.('postcode', val)}
+            onChange={(val: any) => updateField?.('postcode', val)}
           />
         </dl>
       </div>
@@ -981,7 +980,7 @@ function ChildrenTab({ children, memberId }: any) {
         })}
       </div>
 
-      {/* Modals would go here - placeholder for now */}
+      {/* Real Modals */}
       {showAddModal && (
         <ChildModal
           isOpen={showAddModal}
@@ -989,21 +988,14 @@ function ChildrenTab({ children, memberId }: any) {
           memberId={memberId}
         />
       )}
-      
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4">Add Child</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Child add/edit modal to be implemented
-            </p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+
+      {editingChild && (
+        <ChildModal
+          isOpen={!!editingChild}
+          onClose={() => setEditingChild(null)}
+          memberId={memberId}
+          child={editingChild}
+        />
       )}
 
       {showDeleteConfirm && (
@@ -1142,22 +1134,22 @@ function NextOfKinTab({ nextOfKin, memberId }: any) {
         ))}
       </div>
 
-      {/* Modals placeholder */}
+      {/* Real Modals */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4">Add Emergency Contact</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Contact add/edit modal to be implemented
-            </p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <NextOfKinModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          memberId={memberId}
+        />
+      )}
+
+      {editingContact && (
+        <NextOfKinModal
+          isOpen={!!editingContact}
+          onClose={() => setEditingContact(null)}
+          memberId={memberId}
+          contact={editingContact}
+        />
       )}
 
       {showDeleteConfirm && (
@@ -1301,22 +1293,22 @@ function MedicalInfoTab({ medicalInfo, memberId }: any) {
         color="bg-green-500"
       />
 
-      {/* Modals placeholder */}
+      {/* Real Modals */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4">Add Medical Information</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Medical info add/edit modal to be implemented
-            </p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <MedicalInfoModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          memberId={memberId}
+        />
+      )}
+
+      {editingInfo && (
+        <MedicalInfoModal
+          isOpen={!!editingInfo}
+          onClose={() => setEditingInfo(null)}
+          memberId={memberId}
+          info={editingInfo}
+        />
       )}
 
       {showDeleteConfirm && (
@@ -1335,7 +1327,7 @@ function MedicalInfoTab({ medicalInfo, memberId }: any) {
 }
 
 // Documents Tab Component (Simple placeholder)
-function DocumentsTab({ documents, memberId }: any) {
+function DocumentsTab({ documents }: any) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <div className="text-center py-8">
@@ -1352,7 +1344,7 @@ function DocumentsTab({ documents, memberId }: any) {
   );
 }
 
-function PaymentsTab({ payments, memberId }: any) {
+function PaymentsTab({ payments }: any) {
   const totalPaid = payments
     .filter((p: any) => p.payment_status === 'completed')
     .reduce((sum: number, p: any) => sum + Number(p.total_amount), 0);
