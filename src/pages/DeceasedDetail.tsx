@@ -34,34 +34,56 @@ export default function DeceasedDetail() {
 
   // Fetch deceased member with all related data
   const { data: deceasedData, isLoading } = useQuery({
-    queryKey: ['deceased-detail', id],
-    queryFn: async () => {
-      const [
-        { data: member },
-        { data: record },
-        { data: expenses },
-        { data: payments },
-        { data: contacts },
-        { data: checklist },
-      ] = await Promise.all([
-        supabase.from('members').select('*').eq('id', id).single(),
-        supabase.from('deceased_records').select('*').eq('member_id', id).maybeSingle(),
-        supabase.from('funeral_expenses').select('*').eq('deceased_record_id', record?.id || ''),
-        supabase.from('funeral_payments').select('*').eq('deceased_record_id', record?.id || ''),
-        supabase.from('funeral_contacts').select('*').eq('deceased_record_id', record?.id || ''),
-        supabase.from('funeral_checklist').select('*').eq('deceased_record_id', record?.id || ''),
-      ]);
+  queryKey: ['deceased-detail', id],
+  queryFn: async () => {
+    const { data: member } = await supabase
+      .from('members')
+      .select('*')
+      .eq('id', id)
+      .single();
 
+    if (!member) return null;
+
+    const { data: record } = await supabase
+      .from('deceased_records')
+      .select('*')
+      .eq('member_id', id)
+      .maybeSingle();
+
+    // Only fetch related data if record exists
+    if (!record) {
       return {
         member,
-        record,
-        expenses: expenses || [],
-        payments: payments || [],
-        contacts: contacts || [],
-        checklist: checklist || [],
+        record: null,
+        expenses: [],
+        payments: [],
+        contacts: [],
+        checklist: [],
       };
-    },
-  });
+    }
+
+    const [
+      { data: expenses },
+      { data: payments },
+      { data: contacts },
+      { data: checklist },
+    ] = await Promise.all([
+      supabase.from('funeral_expenses').select('*').eq('deceased_record_id', record.id),
+      supabase.from('funeral_payments').select('*').eq('deceased_record_id', record.id),
+      supabase.from('funeral_contacts').select('*').eq('deceased_record_id', record.id),
+      supabase.from('funeral_checklist').select('*').eq('deceased_record_id', record.id),
+    ]);
+
+    return {
+      member,
+      record,
+      expenses: expenses || [],
+      payments: payments || [],
+      contacts: contacts || [],
+      checklist: checklist || [],
+    };
+  },
+});
 
   const updateRecordMutation = useMutation({
     mutationFn: async (data: any) => {
