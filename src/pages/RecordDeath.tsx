@@ -90,7 +90,6 @@ export default function RecordDeath() {
         .from('members')
         .update({ 
           status: 'deceased',
-          member_status: 'deceased',
         })
         .eq('id', data.member_id);
 
