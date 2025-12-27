@@ -15,6 +15,8 @@ import {
   Clock,
   RefreshCw,
   Check,
+  MapPin,
+  User,
 } from 'lucide-react';
 
 export default function DeceasedMembers() {
@@ -28,7 +30,7 @@ export default function DeceasedMembers() {
   const { data: deceasedData, isLoading, refetch } = useQuery({
     queryKey: ['deceased-members'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('deceased')
         .select(`
           *,
@@ -42,6 +44,13 @@ export default function DeceasedMembers() {
           )
         `)
         .order('created_at', { ascending: false });
+
+      console.log('📊 Deceased query:', {
+        success: !error,
+        count: data?.length || 0,
+        data: data,
+        error: error
+      });
 
       return data || [];
     },
@@ -317,7 +326,8 @@ export default function DeceasedMembers() {
 
       {/* Deceased Members List */}
       <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop View */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gradient-to-r from-gray-700 to-gray-800">
               <tr>
@@ -359,7 +369,18 @@ export default function DeceasedMembers() {
                               {record.deceased_name}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {member?.date_of_birth ? `Born: ${new Date(member.date_of_birth).toLocaleDateString()}` : 'DOB not recorded'}
+                              {member?.date_of_birth ? (
+                                <>
+                                  Born: {new Date(member.date_of_birth).toLocaleDateString()}
+                                  {record.date_of_death && (
+                                    <span className="ml-2">
+                                      (Age: {Math.floor((new Date(record.date_of_death).getTime() - new Date(member.date_of_birth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))})
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                'DOB not recorded'
+                              )}
                             </div>
                           </div>
                         </div>
@@ -409,12 +430,20 @@ export default function DeceasedMembers() {
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center">
                     <div className="text-gray-500">
-                      <FileHeart className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                      <p className="text-lg font-medium">No deceased members found</p>
-                      <p className="text-sm mt-1">
+                      <FileHeart className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                      <p className="text-xl font-semibold text-gray-700 mb-2">
+                        No deceased members found
+                      </p>
+                      <p className="text-sm text-gray-500 mb-4">
                         {searchTerm || statusFilter !== 'all' || dateFilter !== 'all'
                           ? 'Try adjusting your search or filters'
                           : 'Deceased member records will appear here'}
+                      </p>
+                      <p className="text-xs text-gray-400 italic">
+                        إِنَّا لِلَّٰهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        "May Allah grant them Jannah Al-Firdaus"
                       </p>
                     </div>
                   </td>
@@ -422,6 +451,63 @@ export default function DeceasedMembers() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="lg:hidden space-y-4 p-4">
+          {filteredMembers && filteredMembers.length > 0 ? (
+            filteredMembers.map((record: any) => {
+              return (
+                <div key={record.id} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center">
+                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-semibold text-lg">
+                        {record.deceased_name?.[0] || '?'}
+                      </div>
+                      <div className="ml-3">
+                        <p className="font-semibold text-gray-900">{record.deceased_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {record.date_of_death
+                            ? new Date(record.date_of_death).toLocaleDateString()
+                            : 'Date not recorded'}
+                        </p>
+                      </div>
+                    </div>
+                    {getStatusBadge(record.status)}
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    {record.burial_location && (
+                      <div className="flex items-center text-gray-600">
+                        <MapPin className="h-4 w-4 mr-2" />
+                        {record.burial_location}
+                      </div>
+                    )}
+                    {record.handled_by && (
+                      <div className="flex items-center text-gray-600">
+                        <User className="h-4 w-4 mr-2" />
+                        {record.handled_by}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-gray-100">
+                    <Link
+                      to={`/deceased/${record.id}`}
+                      className="block w-full text-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                    >
+                      View Details
+                    </Link>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <FileHeart className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p>No deceased members found</p>
+            </div>
+          )}
         </div>
 
         {/* Footer with count */}

@@ -44,7 +44,7 @@ export default function DeceasedDetail() {
     if (!member) return null;
 
     const { data: record } = await supabase
-      .from('deceased_records')
+      .from('deceased')
       .select('*')
       .eq('member_id', id)
       .maybeSingle();
@@ -87,7 +87,7 @@ export default function DeceasedDetail() {
   const updateRecordMutation = useMutation({
     mutationFn: async (data: any) => {
       const { error } = await supabase
-        .from('deceased_records')
+        .from('deceased')
         .update(data)
         .eq('id', deceasedData?.record?.id);
       if (error) throw error;

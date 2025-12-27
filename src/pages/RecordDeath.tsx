@@ -169,22 +169,34 @@ export default function RecordDeath() {
             </div>
             
             {/* Progress Steps */}
-            <div className="flex items-center space-x-4">
-              {[1, 2, 3, 4].map((s) => (
-                <div key={s} className="flex items-center">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      s === step
-                        ? 'bg-emerald-600 text-white'
-                        : s < step
-                        ? 'bg-emerald-100 text-emerald-600'
-                        : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {s < step ? <CheckCircle className="h-5 w-5" /> : s}
+            <div className="hidden md:flex items-center space-x-4">
+              {[
+                { num: 1, label: 'Select' },
+                { num: 2, label: 'Death' },
+                { num: 3, label: 'Burial' },
+                { num: 4, label: 'Review' }
+              ].map((s) => (
+                <div key={s.num} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium ${
+                        s.num === step
+                          ? 'bg-emerald-600 text-white ring-4 ring-emerald-100'
+                          : s.num < step
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : 'bg-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {s.num < step ? <CheckCircle className="h-5 w-5" /> : s.num}
+                    </div>
+                    <span className={`text-xs mt-1 font-medium ${
+                      s.num === step ? 'text-emerald-600' : 'text-gray-500'
+                    }`}>
+                      {s.label}
+                    </span>
                   </div>
-                  {s < 4 && (
-                    <ChevronRight className={`h-4 w-4 mx-2 ${s < step ? 'text-emerald-600' : 'text-gray-400'}`} />
+                  {s.num < 4 && (
+                    <ChevronRight className={`h-4 w-4 mx-2 ${s.num < step ? 'text-emerald-600' : 'text-gray-400'}`} />
                   )}
                 </div>
               ))}
