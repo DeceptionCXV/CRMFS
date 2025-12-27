@@ -1,8 +1,8 @@
 // src/pages/RecordDeath.tsx
 // Wizard to record a member's death and create funeral record
 
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import {
@@ -31,11 +31,12 @@ interface DeathFormData {
 export default function RecordDeath() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [step, setStep] = useState(1); // 1: Select Member, 2: Death Details, 3: Burial Details, 4: Confirmation
+  const { memberId } = useParams();
+  const [step, setStep] = useState(memberId ? 2 : 1); // Skip to step 2 if memberId provided
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [formData, setFormData] = useState<DeathFormData>({
-    member_id: '',
+    member_id: memberId || '',
     date_of_death: new Date().toISOString().split('T')[0],
     place_of_death: '',
     next_of_kin_notified: false,
@@ -57,6 +58,17 @@ export default function RecordDeath() {
       return data || [];
     },
   });
+
+  // Load member if memberId provided in URL
+  useEffect(() => {
+    if (memberId && members) {
+      const member = members.find(m => m.id === memberId);
+      if (member) {
+        setSelectedMember(member);
+        setFormData(prev => ({ ...prev, member_id: memberId }));
+      }
+    }
+  }, [memberId, members]);
 
   // Create death record mutation
   const createDeathRecord = useMutation({
@@ -97,14 +109,12 @@ export default function RecordDeath() {
 
       return deceasedRecord;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deceased-members'] });
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['member-detail', formData.member_id] });
 
-      console.log('Created deceased record:', data); // Debug
-      
-      navigate(`/deceased`);
+      navigate(`/members/${formData.member_id}`);
     },
   });
 

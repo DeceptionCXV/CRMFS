@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { ProfileHeaderSkeleton, FormSkeleton } from '../components/SkeletonComponents';
@@ -26,7 +26,6 @@ import {
 
 export default function DeceasedDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<any>(null);
@@ -305,13 +304,13 @@ export default function DeceasedDetail() {
               <p className="text-sm text-yellow-700 mt-1">
                 This member is marked as deceased but has no funeral record. Create one to track the funeral process.
               </p>
-              <button
-                onClick={() => navigate(`/deceased/record?member_id=${id}`)}
+              <Link
+                to={`/deceased/record/${member?.id}`}
                 className="mt-3 inline-flex items-center px-3 py-1.5 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Create Funeral Record
-              </button>
+              </Link>
             </div>
           </div>
         </div>

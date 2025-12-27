@@ -28,59 +28,62 @@ export default function DeceasedMembers() {
   const { data: deceasedData, isLoading, refetch } = useQuery({
     queryKey: ['deceased-members'],
     queryFn: async () => {
-      const { data: members } = await supabase
-        .from('members')
+      const { data } = await supabase
+        .from('deceased')
         .select(`
           *,
-          deceased_records (*)
+          members (
+            id,
+            first_name,
+            last_name,
+            email,
+            mobile,
+            date_of_birth
+          )
         `)
-        .eq('status', 'deceased')
-        .order('updated_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
-      return members || [];
+      return data || [];
     },
   });
 
   // Calculate statistics
   const stats = {
     totalDeceased: deceasedData?.length || 0,
-    thisMonth: deceasedData?.filter((m: any) => {
-      if (!m.deceased_records?.[0]?.date_of_death) return false;
-      const deathDate = new Date(m.deceased_records[0].date_of_death);
+    thisMonth: deceasedData?.filter((record: any) => {
+      if (!record.date_of_death) return false;
+      const deathDate = new Date(record.date_of_death);
       const now = new Date();
-      return deathDate.getMonth() === now.getMonth() && 
+      return deathDate.getMonth() === now.getMonth() &&
              deathDate.getFullYear() === now.getFullYear();
     }).length || 0,
-    pendingArrangements: deceasedData?.filter((m: any) => 
-      m.deceased_records?.[0]?.status === 'reported' || 
-      m.deceased_records?.[0]?.status === 'arranged'
+    pendingArrangements: deceasedData?.filter((record: any) =>
+      record.status === 'reported' ||
+      record.status === 'arranged'
     ).length || 0,
-    completedCases: deceasedData?.filter((m: any) => 
-      m.deceased_records?.[0]?.status === 'completed'
+    completedCases: deceasedData?.filter((record: any) =>
+      record.status === 'completed'
     ).length || 0,
   };
 
   // Filter deceased members
-  const filteredMembers = deceasedData?.filter((member: any) => {
-    const record = member.deceased_records?.[0];
-    
+  const filteredMembers = deceasedData?.filter((record: any) => {
     const matchesSearch =
       searchTerm === '' ||
-      `${member.first_name} ${member.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record?.burial_location?.toLowerCase().includes(searchTerm.toLowerCase());
+      record.deceased_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.burial_location?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesStatus = 
-      statusFilter === 'all' || 
-      record?.status === statusFilter ||
-      (!record && statusFilter === 'no_record');
+    const matchesStatus =
+      statusFilter === 'all' ||
+      record.status === statusFilter;
 
     let matchesDate = true;
-    if (dateFilter !== 'all' && record?.date_of_death) {
+    if (dateFilter !== 'all' && record.date_of_death) {
       const deathDate = new Date(record.date_of_death);
       const now = new Date();
 
       if (dateFilter === 'month') {
-        matchesDate = deathDate.getMonth() === now.getMonth() && 
+        matchesDate = deathDate.getMonth() === now.getMonth() &&
                      deathDate.getFullYear() === now.getFullYear();
       } else if (dateFilter === 'year') {
         matchesDate = deathDate.getFullYear() === now.getFullYear();
@@ -340,30 +343,30 @@ export default function DeceasedMembers() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredMembers && filteredMembers.length > 0 ? (
-                filteredMembers.map((member: any) => {
-                  const record = member.deceased_records?.[0];
+                filteredMembers.map((record: any) => {
+                  const member = record.members;
                   return (
-                    <tr key={member.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={record.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10">
                             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-semibold">
-                              {member.first_name[0]}{member.last_name[0]}
+                              {record.deceased_name?.[0] || '?'}
                             </div>
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">
-                              {member.title} {member.first_name} {member.last_name}
+                              {record.deceased_name}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {member.dob ? `Born: ${new Date(member.dob).toLocaleDateString()}` : 'DOB not recorded'}
+                              {member?.date_of_birth ? `Born: ${new Date(member.date_of_birth).toLocaleDateString()}` : 'DOB not recorded'}
                             </div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {record?.date_of_death 
+                          {record.date_of_death
                             ? new Date(record.date_of_death).toLocaleDateString('en-GB', {
                                 day: 'numeric',
                                 month: 'short',
@@ -372,27 +375,27 @@ export default function DeceasedMembers() {
                             : 'Not recorded'
                           }
                         </div>
-                        {record?.time_of_death && (
+                        {record.time_of_death && (
                           <div className="text-xs text-gray-500">{record.time_of_death}</div>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {record?.burial_location || 'Not recorded'}
+                          {record.burial_location || 'Not recorded'}
                         </div>
-                        {record?.burial_plot_number && (
+                        {record.burial_plot_number && (
                           <div className="text-xs text-gray-500">Plot: {record.burial_plot_number}</div>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(record?.status)}
+                        {getStatusBadge(record.status)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record?.handled_by || 'Not assigned'}
+                        {record.handled_by || 'Not assigned'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <Link
-                          to={`/deceased/${member.id}`}
+                          to={`/deceased/${record.id}`}
                           className="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
                         >
                           <Eye className="h-4 w-4 mr-1" />
