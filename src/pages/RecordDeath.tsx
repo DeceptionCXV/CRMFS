@@ -48,7 +48,7 @@ export default function RecordDeath() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('members')
-        .select('id, first_name, last_name, email, mobile, member_status')
+        .select('id, first_name, last_name, email, mobile, status')
         .eq('member_status', 'active')
         .order('last_name');
 
