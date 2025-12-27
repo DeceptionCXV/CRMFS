@@ -49,7 +49,7 @@ export default function RecordDeath() {
       const { data, error } = await supabase
         .from('members')
         .select('id, first_name, last_name, email, mobile, status')
-        .eq('member_status', 'active')
+        .eq('status', 'active')
         .order('last_name');
 
       console.log('Members query result:', { data, error, count: data?.length });
