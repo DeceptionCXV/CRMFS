@@ -5,6 +5,12 @@ import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NavigationGuardProvider } from './contexts/NavigationGuardContext';
+import { WorkspaceProvider } from './contexts/WorkspaceContext';
+import {
+  LegacyMemberDetailRedirect,
+  LegacyDeceasedDetailRedirect,
+  LegacyRecordDeathRedirect,
+} from './components/LegacyRouteRedirects';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import CompactLayout from './components/CompactLayout';
@@ -62,6 +68,7 @@ function App() {
           <ThemeProvider>
             <AuthProvider>
               <ToastProvider>
+                <WorkspaceProvider>
                 <NavigationGuardProvider>
                 {/* Command Palette - OUTSIDE Routes */}
                 <CommandPalette />
@@ -81,12 +88,15 @@ function App() {
                   <Route index element={<Dashboard />} />
                   <Route path="members" element={<MemberList />} />
                   <Route path="members/new" element={<AddMember />} />
-                  <Route path="members/:id" element={<MemberDetail />} />
+                  <Route path="members/detail" element={<MemberDetail />} />
+                  <Route path="members/:id" element={<LegacyMemberDetailRedirect />} />
                   <Route path="payments" element={<Payments />} />
                   <Route path="reports" element={<Reports />} />
                   <Route path="deceased" element={<DeceasedMembers />} />
-                  <Route path="deceased/:id" element={<DeceasedDetail />} />
-                  <Route path="deceased/record/:memberId?" element={<RecordDeath />} />
+                  <Route path="deceased/detail" element={<DeceasedDetail />} />
+                  <Route path="deceased/record" element={<RecordDeath />} />
+                  <Route path="deceased/record/:memberId" element={<LegacyRecordDeathRedirect />} />
+                  <Route path="deceased/:id" element={<LegacyDeceasedDetailRedirect />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="deletion-requests" element={<DeletionRequests />} />
                   <Route path="registration-success" element={<RegistrationSuccess />} />
@@ -99,6 +109,7 @@ function App() {
                 <Route path="*" element={<NotFound />} />
               </Routes>
                 </NavigationGuardProvider>
+                </WorkspaceProvider>
               </ToastProvider>
             </AuthProvider>
           </ThemeProvider>

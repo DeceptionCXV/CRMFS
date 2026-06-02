@@ -1,17 +1,14 @@
 import { supabase } from './supabase';
+import { updateMemberStatus } from './memberStatus';
 import {
   allocateObligationAmounts,
   getMemberPaymentDisplayStatus,
+  getObligationIssueDate,
   hasOverdueOutstanding,
   isObligationPayment,
   PAYMENT_OVERDUE_DAYS,
   type PaymentLike,
 } from './paymentDisplay';
-
-function getObligationIssueDate(payment: PaymentLike): Date {
-  const raw = payment.payment_date || payment.created_at;
-  return raw ? new Date(raw) : new Date(0);
-}
 
 export function buildLatePaymentPausedReason(warningCount: number): string {
   const count = Math.max(0, warningCount);
@@ -79,17 +76,15 @@ export async function enforceOverduePaymentRules(
 
   let memberPaused = false;
   if (shouldPause) {
-    const { error } = await supabase
-      .from('members')
-      .update({
-        status: 'paused',
-        paused_date: new Date().toISOString(),
-        paused_reason: pausedReason,
-      })
-      .eq('id', memberId);
-    if (!error) {
+    try {
+      await updateMemberStatus(memberId, 'paused', {
+        system: true,
+        pausedReason: pausedReason,
+      });
       memberPaused = true;
       changed = true;
+    } catch {
+      // Validation or DB rejected — leave member unchanged
     }
   } else if (member.status === 'paused' && !member.paused_reason) {
     const { error } = await supabase

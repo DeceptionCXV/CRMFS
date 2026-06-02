@@ -24,9 +24,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
-  if (postLoginSplash) {
-    return <LoadingScreen onComplete={completePostLoginSplash} />;
-  }
-
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {postLoginSplash && <LoadingScreen onComplete={completePostLoginSplash} />}
+    </>
+  );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { getAddMemberDraftRef, setAddMemberDraftRef } from '../lib/workspaceStorage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -9,6 +10,7 @@ import {
   registrationDocumentInput,
   resolveMemberStatusOnRegistration,
 } from '../lib/memberActivationRequirements';
+import { updateMemberStatus } from '../lib/memberStatus';
 import { APPLICATION_VERSION, PAPER_FORM_VERSION } from '../lib/version';
 import { useToast } from '../contexts/ToastContext';
 import DateInput from '../components/DateInput';
@@ -171,8 +173,16 @@ export default function AddMember() {
   const { user } = useAuth();
   const toast = useToast();
   const savedApplication = location.state?.savedApplication;
-  const draftRef = searchParams.get('draft');
+  const draftFromQuery = searchParams.get('draft');
+  const draftRef = draftFromQuery ?? getAddMemberDraftRef();
   const initializingRef = useRef(false);
+
+  useEffect(() => {
+    if (draftFromQuery) {
+      setAddMemberDraftRef(draftFromQuery);
+      navigate('/members/new', { replace: true });
+    }
+  }, [draftFromQuery, navigate]);
   const lastSavedStepRef = useRef<number | null>(null);
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -605,7 +615,8 @@ export default function AddMember() {
         app_type: formData.app_type, title: formData.title, first_name: formData.first_name, middle_name: formData.middle_name || null, last_name: formData.last_name,
         dob: formData.dob, address_line_1: formData.address_line_1, town: formData.town, city: formData.city,
         postcode: formData.postcode, mobile: formData.mobile, home_phone: formData.home_phone, work_phone: formData.work_phone,
-        email: formData.email, status: memberStatus,
+        email: formData.email,
+        status: 'pending',
         // Paper form tracking and GDPR consents
         consent_obtained_via: 'paper_form',
         paper_form_version: PAPER_FORM_VERSION,
@@ -730,9 +741,22 @@ export default function AddMember() {
         late_fee: 0, 
         total_amount: submitTotalDue, 
         payment_status: paymentStatus,
+        payment_date: signupDate,
         join_date: signupDate,
         notes: adjustmentReason ? `Adjustment: ${adjustmentReason}` : null,
       });
+
+      if (paymentStatus === 'completed' && submitTotalDue > 0) {
+        await supabase.from('payments').insert({
+          member_id: memberId,
+          payment_type: 'receipt',
+          payment_method: formData.payment_method,
+          total_amount: submitTotalDue,
+          payment_status: 'completed',
+          payment_date: signupDate,
+          notes: 'Registration payment received',
+        });
+      }
 
       // Upload documents to Supabase Storage
       const uploadDoc = async (file: File, path: string): Promise<string | null> => {
@@ -787,6 +811,12 @@ export default function AddMember() {
       }
 
       await logActivity(memberId, ActivityTypes.APPLICATION_SUBMITTED);
+
+      if (memberStatus === 'active') {
+        await updateMemberStatus(memberId, 'active', {
+          changeReason: 'Registration complete — payment and documents satisfied',
+        });
+      }
 
       return { memberId, membershipNumber };
     },

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ApplicationsInProgress from '../components/ApplicationsInProgress';
@@ -22,6 +23,7 @@ import {
 
 export default function Dashboard() {
   const { profile } = useAuth();
+  const { openMember } = useWorkspace();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   // Fetch dashboard stats
@@ -267,10 +269,11 @@ export default function Dashboard() {
           <div className="divide-y divide-gray-200 dark:divide-gray-700 max-h-64 overflow-y-auto">
             {recentMembers && recentMembers.length > 0 ? (
               recentMembers.map((member) => (
-                <Link
+                <button
                   key={member.id}
-                  to={`/members/${member.id}`}
-                  className="px-5 py-3 hover:bg-emerald-50 dark:hover:bg-gray-700 transition-colors block"
+                  type="button"
+                  onClick={() => openMember(member.id)}
+                  className="w-full text-left px-5 py-3 hover:bg-emerald-50 dark:hover:bg-gray-700 transition-colors block"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2.5">
@@ -299,7 +302,7 @@ export default function Dashboard() {
                       {member.status}
                     </span>
                   </div>
-                </Link>
+                </button>
               ))
             ) : (
               <div className="px-5 py-6 text-center text-gray-500 dark:text-gray-400">

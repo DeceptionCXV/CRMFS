@@ -1,3 +1,22 @@
+/**
+ * paymentDisplay.ts
+ *
+ * Simple, clear payment logic:
+ *
+ * OBLIGATION ROW (registration, renewal, etc.):
+ *   Due = full amount  |  Paid = —  |  Outstanding = full amount
+ *   (This is the invoice. It never changes. It just says "you owe this.")
+ *
+ * RECEIPT ROW (payment_type === 'receipt'):
+ *   Due = —  |  Paid = amount on this row  |  Outstanding = running balance after this payment
+ *   (This is money that came in. Outstanding = total owed minus all receipts so far.)
+ *
+ * SUMMARY TOTALS:
+ *   Due = sum of all obligations
+ *   Paid = sum of all receipts
+ *   Outstanding = Due - Paid (floored at 0)
+ */
+
 export interface PaymentAmountRow {
   due: number;
   paid: number;
@@ -27,99 +46,98 @@ export type MemberPaymentDisplayStatus =
   | { kind: 'due'; outstanding: number }
   | { kind: 'failed'; outstanding: number };
 
-/** Receipt rows log money received; they are not a new fee obligation. */
+// ---------------------------------------------------------------------------
+// Basic helpers
+// ---------------------------------------------------------------------------
+
+/** A receipt row = money received. Everything else is an obligation (invoice). */
 export function isReceiptPayment(payment: { payment_type?: string | null }): boolean {
   return payment.payment_type === 'receipt';
 }
 
-/** Registration, renewal, etc. — rows that establish an amount due. */
 export function isObligationPayment(payment: { payment_type?: string | null }): boolean {
   return !isReceiptPayment(payment);
 }
 
-/** Open registration invoice (pending or failed after auto-pause — still the primary due). */
-function getOpenRegistrationObligations(payments: PaymentLike[]): PaymentLike[] {
-  return payments.filter(
-    (p) =>
-      isObligationPayment(p) &&
-      p.payment_type === 'registration' &&
-      (p.payment_status === 'pending' || p.payment_status === 'failed')
-  );
+function toNumber(val: number | string | null | undefined): number {
+  return Number(val || 0);
 }
 
-function hasOpenRegistrationObligation(payments: PaymentLike[]): boolean {
-  return getOpenRegistrationObligations(payments).length > 0;
-}
-
-/** Obligation rows that establish amount due (excludes mis-recorded payment rows). */
-function getObligationsForSummary(payments: PaymentLike[]): PaymentLike[] {
-  const obligations = payments.filter(isObligationPayment);
-  const openRegs = getOpenRegistrationObligations(payments);
-
-  if (openRegs.length > 0) {
-    return openRegs;
-  }
-
-  return obligations.filter(
-    (p) => !(p.payment_type === 'registration' && p.payment_status === 'completed')
-  );
+/** True when payment_date is a calendar date without a meaningful time (form date picker, etc.). */
+function isDateOnlyPaymentDate(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return true;
+  return /^\d{4}-\d{2}-\d{2}T00:00:00(\.000)?Z?$/.test(trimmed);
 }
 
 /**
- * Rows that count as money received (receipt type + legacy extra obligation rows
- * created when "Record Payment" incorrectly inserted a new due).
+ * Single timestamp for sort + overdue: matches the Date/Time column users see.
+ * Date-only payment_date uses that calendar day + clock time from created_at.
  */
-function isPaymentReceivedRow(
-  payment: PaymentLike,
-  allPayments: PaymentLike[]
-): boolean {
-  if (isReceiptPayment(payment)) {
-    return true;
+function getEffectivePaymentTimestamp(payment: PaymentLike): number {
+  const paymentDate = payment.payment_date?.trim();
+  const createdAt = payment.created_at;
+
+  if (!paymentDate) {
+    return createdAt ? new Date(createdAt).getTime() : 0;
   }
-  if (!isObligationPayment(payment)) {
-    return false;
+
+  if (isDateOnlyPaymentDate(paymentDate) && createdAt) {
+    const [y, m, d] = paymentDate.slice(0, 10).split('-').map(Number);
+    const created = new Date(createdAt);
+    return new Date(
+      y,
+      m - 1,
+      d,
+      created.getHours(),
+      created.getMinutes(),
+      created.getSeconds(),
+      created.getMilliseconds()
+    ).getTime();
   }
-  if (!hasOpenRegistrationObligation(allPayments)) {
-    return false;
-  }
-  const openRegs = getOpenRegistrationObligations(allPayments);
-  const isPrimaryObligation = openRegs.some((r) => r.id === payment.id);
-  return !isPrimaryObligation;
+
+  return new Date(paymentDate).getTime();
 }
 
-function amountReceivedOnRow(payment: PaymentLike): number {
-  if (payment.payment_status === 'refunded' || payment.payment_status === 'failed') {
-    return 0;
-  }
-  if (payment.payment_status === 'completed' || payment.payment_status === 'pending') {
-    return Number(payment.total_amount || 0);
-  }
-  return 0;
+function getPaymentSortTime(payment: PaymentLike): number {
+  return getEffectivePaymentTimestamp(payment);
 }
 
-/** Sum of money received across receipt / payment rows (uses `total_amount` per row). */
-function getTotalAmountReceived(payments: PaymentLike[]): number {
-  return payments
-    .filter((p) => isPaymentReceivedRow(p, payments))
-    .reduce((sum, p) => sum + amountReceivedOnRow(p), 0);
+/** Secondary key when two payments share the same effective timestamp. */
+function getPaymentTiebreakTime(payment: PaymentLike): number {
+  return payment.created_at ? new Date(payment.created_at).getTime() : 0;
 }
 
-/** Member-level due / paid / outstanding across all payment rows. */
+function comparePaymentsChronologically(a: PaymentLike, b: PaymentLike): number {
+  const byDate = getPaymentSortTime(a) - getPaymentSortTime(b);
+  if (byDate !== 0) return byDate;
+  return getPaymentTiebreakTime(a) - getPaymentTiebreakTime(b);
+}
+
+/** Display order: newest due/received payments first. */
+export function sortPaymentsNewestFirst(payments: PaymentLike[]): PaymentLike[] {
+  return payments.slice().sort((a, b) => -comparePaymentsChronologically(a, b));
+}
+
+/** Running-balance order: oldest obligations/receipts first. */
+export function sortPaymentsOldestFirst(payments: PaymentLike[]): PaymentLike[] {
+  return payments.slice().sort(comparePaymentsChronologically);
+}
+
+// ---------------------------------------------------------------------------
+// Summary (used by summary cards + activation checks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Member-level totals across all payments.
+ * Due = sum of obligations, Paid = sum of receipts, Outstanding = Due - Paid.
+ */
 export function getMemberPaymentSummary(payments: PaymentLike[]): MemberPaymentSummary {
-  const obligationsForDue = getObligationsForSummary(payments);
-  const totalDue = obligationsForDue.reduce(
-    (sum, p) => sum + Number(p.total_amount || 0),
-    0
-  );
+  const obligations = payments.filter(isObligationPayment);
+  const receipts = payments.filter(isReceiptPayment);
 
-  let totalPaid = getTotalAmountReceived(payments);
-
-  if (totalPaid === 0 && !hasOpenRegistrationObligation(payments)) {
-    totalPaid = obligationsForDue
-      .filter((p) => p.payment_status === 'completed')
-      .reduce((sum, p) => sum + Number(p.total_amount || 0), 0);
-  }
-
+  const totalDue = obligations.reduce((sum, p) => sum + toNumber(p.total_amount), 0);
+  const totalPaid = receipts.reduce((sum, p) => sum + toNumber(p.total_amount), 0);
   const outstanding = Math.max(0, totalDue - totalPaid);
 
   return {
@@ -130,103 +148,61 @@ export function getMemberPaymentSummary(payments: PaymentLike[]): MemberPaymentS
   };
 }
 
-/** Internal allocation for activation / marking obligations complete. */
-export function getPaymentAmounts(
-  payment: PaymentLike,
-  allPayments: PaymentLike[] = []
-): PaymentAmountRow {
-  if (isPaymentReceivedRow(payment, allPayments)) {
-    const paid = Number(payment.total_amount || 0);
-    return { due: 0, paid, outstanding: 0 };
-  }
-
-  const allocations = allocateObligationAmounts(allPayments);
-  const row = payment.id ? allocations.get(payment.id) : undefined;
-
-  if (row) {
-    return row;
-  }
-
-  const due = Number(payment.total_amount || 0);
-  const paid = payment.payment_status === 'completed' ? due : 0;
-  return {
-    due,
-    paid,
-    outstanding: payment.payment_status === 'refunded' ? 0 : Math.max(0, due - paid),
-  };
-}
+// ---------------------------------------------------------------------------
+// Per-row display amounts for the payment history table
+// ---------------------------------------------------------------------------
 
 /**
- * Per-row amounts for the payment history table.
- * - Primary obligation (e.g. registration invoice): full due, no paid on row, full outstanding on row.
- * - Payment received rows: reference due, amount paid on this row, remaining balance after all payments.
+ * Returns { due, paid, outstanding } for a single row in the payment history table.
+ *
+ * Both obligation and receipt rows show a running balance — like a bank statement.
+ *
+ * Obligation row:  due = amount, paid = —, outstanding = cumulative obligations so far minus all receipts so far
+ * Receipt row:     due = —,     paid = amount, outstanding = running balance after this receipt
+ *
+ * Everything sorted chronologically (oldest first) to calculate the running balance correctly.
  */
 export function getPaymentTableRowAmounts(
   payment: PaymentLike,
-  allPayments: PaymentLike[] = []
+  allPayments: PaymentLike[]
 ): PaymentAmountRow {
-  const summary = getMemberPaymentSummary(allPayments);
+  const sorted = sortPaymentsOldestFirst(allPayments);
 
-  if (isPaymentReceivedRow(payment, allPayments)) {
-    const paid =
-      payment.payment_status === 'completed' ||
-      payment.payment_status === 'pending'
-        ? Number(payment.total_amount || 0)
-        : 0;
-    return {
-      due: summary.totalDue,
-      paid,
-      outstanding: summary.outstanding,
-    };
+  let runningBalance = 0;
+  const thisId = payment.id;
+
+  for (const row of sorted) {
+    if (isObligationPayment(row)) {
+      // Each obligation adds to what's owed
+      runningBalance += toNumber(row.total_amount);
+    } else {
+      // Each receipt reduces the balance
+      runningBalance = Math.max(0, runningBalance - toNumber(row.total_amount));
+    }
+
+    if (row.id && row.id === thisId) {
+      if (isObligationPayment(payment)) {
+        return { due: toNumber(payment.total_amount), paid: 0, outstanding: runningBalance };
+      } else {
+        return { due: 0, paid: toNumber(payment.total_amount), outstanding: runningBalance };
+      }
+    }
   }
 
-  const due = Number(payment.total_amount || 0);
-
-  if (payment.payment_status === 'pending') {
+  // Fallback — shouldn't normally reach here
+  const due = toNumber(payment.total_amount);
+  if (isObligationPayment(payment)) {
     return { due, paid: 0, outstanding: due };
   }
 
-  if (payment.payment_status === 'completed') {
-    return { due, paid: due, outstanding: 0 };
-  }
-
-  if (payment.payment_status === 'refunded') {
-    return { due, paid: 0, outstanding: 0 };
-  }
-
-  return { due, paid: 0, outstanding: due };
+  const paid = toNumber(payment.total_amount);
+  return { due: 0, paid, outstanding: 0 };
 }
 
-export function allocateObligationAmounts(
-  payments: PaymentLike[]
-): Map<string, PaymentAmountRow> {
-  const map = new Map<string, PaymentAmountRow>();
-  const obligationsForDue = getObligationsForSummary(payments);
-  let receiptPool = getTotalAmountReceived(payments);
-
-  const sorted = [...obligationsForDue].sort((a, b) => {
-    const aTime = new Date(a.created_at || 0).getTime();
-    const bTime = new Date(b.created_at || 0).getTime();
-    return aTime - bTime;
-  });
-
-  for (const obligation of sorted) {
-    if (!obligation.id) continue;
-    const due = Number(obligation.total_amount || 0);
-
-    if (obligation.payment_status === 'completed') {
-      map.set(obligation.id, { due, paid: due, outstanding: 0 });
-      continue;
-    }
-
-    const paid = Math.min(due, receiptPool);
-    receiptPool -= paid;
-    map.set(obligation.id, { due, paid, outstanding: Math.max(0, due - paid) });
-  }
-
-  return map;
-}
-
+/**
+ * Totals row at the bottom of the table (simple sum of all row amounts).
+ * Due = total obligated, Paid = total received, Outstanding = difference.
+ */
 export function sumPaymentAmounts(payments: PaymentLike[]): PaymentAmountRow {
   const summary = getMemberPaymentSummary(payments);
   return {
@@ -235,6 +211,110 @@ export function sumPaymentAmounts(payments: PaymentLike[]): PaymentAmountRow {
     outstanding: summary.outstanding,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Internal allocation (used by activation checks + obligation status updates)
+// ---------------------------------------------------------------------------
+
+/**
+ * Allocates receipts against obligations in chronological order.
+ * Returns a map of obligation ID → { due, paid, outstanding }.
+ * Used internally to work out which obligations are still partially/fully unpaid.
+ */
+export function allocateObligationAmounts(
+  payments: PaymentLike[]
+): Map<string, PaymentAmountRow> {
+  const map = new Map<string, PaymentAmountRow>();
+
+  const obligations = sortPaymentsOldestFirst(payments.filter(isObligationPayment));
+
+  const totalReceived = payments
+    .filter(isReceiptPayment)
+    .reduce((sum, p) => sum + toNumber(p.total_amount), 0);
+
+  let receiptPool = totalReceived;
+
+  for (const obligation of obligations) {
+    if (!obligation.id) continue;
+    const due = toNumber(obligation.total_amount);
+    const paid = Math.min(due, receiptPool);
+    receiptPool = Math.max(0, receiptPool - paid);
+    map.set(obligation.id, { due, paid, outstanding: Math.max(0, due - paid) });
+  }
+
+  return map;
+}
+
+/**
+ * Used by activation checks. Returns amounts for a single payment
+ * using the allocation model above.
+ */
+export function getPaymentAmounts(
+  payment: PaymentLike,
+  allPayments: PaymentLike[] = []
+): PaymentAmountRow {
+  if (isReceiptPayment(payment)) {
+    return { due: 0, paid: toNumber(payment.total_amount), outstanding: 0 };
+  }
+
+  const allocations = allocateObligationAmounts(allPayments);
+  const row = payment.id ? allocations.get(payment.id) : undefined;
+  if (row) return row;
+
+  const due = toNumber(payment.total_amount);
+  return { due, paid: 0, outstanding: due };
+}
+
+/** Obligation rows with remaining outstanding balance. */
+export function getOutstandingObligations(payments: PaymentLike[]): PaymentLike[] {
+  const allocations = allocateObligationAmounts(payments);
+  return payments.filter((p) => {
+    if (!isObligationPayment(p) || !p.id) return false;
+    const row = allocations.get(p.id);
+    return row ? row.outstanding > 0 : false;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Overdue detection
+// ---------------------------------------------------------------------------
+
+export function getObligationIssueDate(payment: PaymentLike): Date {
+  const ts = getEffectivePaymentTimestamp(payment);
+  return ts ? new Date(ts) : new Date(0);
+}
+
+export function hasOverdueOutstanding(
+  payments: PaymentLike[],
+  days: number = PAYMENT_OVERDUE_DAYS
+): boolean {
+  const allocations = allocateObligationAmounts(payments);
+  const thresholdMs = days * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  for (const payment of payments) {
+    if (!isObligationPayment(payment) || !payment.id) continue;
+    const row = allocations.get(payment.id);
+    if (!row || row.outstanding <= 0) continue;
+    const issued = getObligationIssueDate(payment);
+    if (now - issued.getTime() > thresholdMs) return true;
+  }
+
+  return false;
+}
+
+export function getMemberPaymentDisplayStatus(
+  payments: PaymentLike[]
+): MemberPaymentDisplayStatus {
+  const summary = getMemberPaymentSummary(payments);
+  if (summary.outstanding <= 0) return { kind: 'clear' };
+  if (hasOverdueOutstanding(payments)) return { kind: 'failed', outstanding: summary.outstanding };
+  return { kind: 'due', outstanding: summary.outstanding };
+}
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
 
 export function formatPaymentDateTime(payment: {
   payment_date?: string | null;
@@ -268,11 +348,9 @@ export function formatPaymentReason(
     payment_status?: string | null;
     id?: string;
   },
-  allPayments: PaymentLike[] = []
+  _allPayments: PaymentLike[] = []
 ): string {
-  if (isPaymentReceivedRow(payment, allPayments)) {
-    return 'Payment received';
-  }
+  if (isReceiptPayment(payment)) return 'Payment received';
   if (!payment.payment_type) return '—';
   return payment.payment_type
     .split('_')
@@ -290,61 +368,4 @@ export function formatPaymentMethod(method?: string | null): string {
 
 export function formatMoney(amount: number): string {
   return `£${amount.toFixed(2)}`;
-}
-
-function getObligationIssueDate(payment: PaymentLike): Date {
-  const raw = payment.payment_date || payment.created_at;
-  return raw ? new Date(raw) : new Date(0);
-}
-
-/** True when any unpaid obligation is older than `days` from issue date. */
-export function hasOverdueOutstanding(
-  payments: PaymentLike[],
-  days: number = PAYMENT_OVERDUE_DAYS
-): boolean {
-  const allocations = allocateObligationAmounts(payments);
-  const thresholdMs = days * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-
-  for (const payment of payments) {
-    if (!isObligationPayment(payment) || !payment.id) continue;
-    const row = allocations.get(payment.id);
-    if (!row || row.outstanding <= 0) continue;
-
-    const issued = getObligationIssueDate(payment);
-    if (now - issued.getTime() > thresholdMs) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/** Header / badge label for member payment state. */
-export function getMemberPaymentDisplayStatus(
-  payments: PaymentLike[]
-): MemberPaymentDisplayStatus {
-  const summary = getMemberPaymentSummary(payments);
-
-  if (summary.outstanding <= 0) {
-    return { kind: 'clear' };
-  }
-
-  if (hasOverdueOutstanding(payments)) {
-    return { kind: 'failed', outstanding: summary.outstanding };
-  }
-
-  return { kind: 'due', outstanding: summary.outstanding };
-}
-
-/** Obligation rows still pending after applying all receipts. */
-export function getOutstandingObligations(payments: PaymentLike[]): PaymentLike[] {
-  const allocations = allocateObligationAmounts(payments);
-  return payments.filter((p) => {
-    if (!isObligationPayment(p) || !p.id || p.payment_status !== 'pending') {
-      return false;
-    }
-    const row = allocations.get(p.id);
-    return row ? row.outstanding > 0 : true;
-  });
 }

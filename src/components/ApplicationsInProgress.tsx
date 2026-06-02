@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { Clock, Trash2, ArrowRight, Hash } from 'lucide-react';
 
 function formatTimeAgo(dateString: string): string {
@@ -24,7 +25,7 @@ function formatTimeAgo(dateString: string): string {
 }
 
 export default function ApplicationsInProgress() {
-  const navigate = useNavigate();
+  const { openAddMemberWithDraft } = useWorkspace();
 
   const { data: applications, isLoading, refetch } = useQuery({
     queryKey: ['applications-in-progress'],
@@ -54,7 +55,7 @@ export default function ApplicationsInProgress() {
   };
 
   const continueApplication = (app: any) => {
-    navigate(`/members/new?draft=${app.application_reference}`);
+    openAddMemberWithDraft(app.application_reference);
   };
 
   if (isLoading) {

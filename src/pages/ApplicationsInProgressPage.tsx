@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { Clock, Search, Hash, ArrowRight, FileX, User } from 'lucide-react';
 
 function formatTimeAgo(dateString: string): string {
@@ -27,7 +27,7 @@ function formatTimeAgo(dateString: string): string {
 const TOTAL_STEPS = 9; // 8 visible steps for single (9 internal including joint), max 9 for joint
 
 export default function ApplicationsInProgressPage() {
-  const navigate = useNavigate();
+  const { openAddMemberWithDraft } = useWorkspace();
   const [searchTerm, setSearchTerm] = useState('');
 
   const { data: applications, isLoading } = useQuery({
@@ -60,7 +60,7 @@ export default function ApplicationsInProgressPage() {
   }, [applications, searchTerm]);
 
   const resumeApplication = (app: any) => {
-    navigate(`/members/new?draft=${app.application_reference}`);
+    openAddMemberWithDraft(app.application_reference);
   };
 
   return (

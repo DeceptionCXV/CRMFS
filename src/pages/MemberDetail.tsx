@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { getActiveMemberId, consumeMemberViewOptions } from '../lib/workspaceStorage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { logActivity, ActivityTypes, getCurrentUserInfo } from '../lib/activityLogger';
@@ -27,15 +28,21 @@ import {
   getMemberPaymentSummary,
   getPaymentTableRowAmounts,
   isObligationPayment,
-  sumPaymentAmounts,
+  sortPaymentsNewestFirst,
 } from '../lib/paymentDisplay';
 import { enforceOverduePaymentRules } from '../lib/memberPaymentEnforcement';
+import {
+  updateMemberStatus,
+  MemberStatusError,
+  type MemberStatus,
+} from '../lib/memberStatus';
 import { ActivationConfirmModal } from '../components/ActivationConfirmModal';
 import { ArrowLeft, User, Users, Baby, Heart, Calendar, Phone, MapPin, CreditCard as Edit, Save, X, Trash2, Pause, CreditCard, AlertTriangle, PoundSterling, Stethoscope, CheckSquare, CheckCircle, FileText, Upload, AlertCircle, Eye, Download, Info, PlayCircle, Shield, MoreVertical, ChevronDown, ChevronUp, Clock, Plus } from 'lucide-react';
 
 export default function MemberDetail() {
-  const { id } = useParams();
+  const id = getActiveMemberId();
   const navigate = useNavigate();
+  const memberViewAppliedRef = useRef(false);
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('personal');
   const [isEditing, setIsEditing] = useState(false);
@@ -88,6 +95,20 @@ export default function MemberDetail() {
   const originalMemberDataRef = useRef<any>(null);
   const [showChangeReasonModal, setShowChangeReasonModal] = useState(false);
   const [isSavingWithReason, setIsSavingWithReason] = useState(false);
+
+  useEffect(() => {
+    if (!id) {
+      navigate('/members', { replace: true });
+      return;
+    }
+    if (memberViewAppliedRef.current) return;
+    memberViewAppliedRef.current = true;
+    const view = consumeMemberViewOptions();
+    if (view.tab) setActiveTab(view.tab);
+    if (view.edit) setIsEditing(true);
+    if (view.action === 'pause') setShowPauseConfirm(true);
+    if (view.action === 'delete') setShowDeleteConfirm(true);
+  }, [id, navigate]);
 
   // Tabs that support inline editing via the Edit Member button
   // Other tabs (children, nok, medical, gp, declarations) use their own modals
@@ -166,33 +187,23 @@ export default function MemberDetail() {
     enabled: !!id,
   });
 
-  const assertCanSetActive = (
-    nextStatus: string | undefined,
-    previousStatus?: string
-  ) => {
-    if (nextStatus !== 'active' || previousStatus === 'active' || !memberData?.member) {
-      return;
-    }
-    const eligibility = getMemberActivationEligibility(
-      memberData.member,
-      memberData.children || [],
-      memberData.payments || []
-    );
-    if (!eligibility.canActivate) {
-      throw new Error(
-        eligibility.blockers[0] ||
-          'Cannot set status to Active until payment and documents are complete.'
-      );
-    }
-  };
-
   const updateMutation = useMutation({
     mutationFn: async (data: any & { _changeReason?: string }) => {
       const { _changeReason, ...updateData } = data;
-      assertCanSetActive(
-        updateData.status,
-        originalMemberDataRef.current?.status
-      );
+      const previousStatus = originalMemberDataRef.current?.status;
+      const nextStatus = updateData.status as MemberStatus | undefined;
+
+      if (
+        nextStatus &&
+        previousStatus &&
+        nextStatus !== previousStatus &&
+        id
+      ) {
+        await updateMemberStatus(id, nextStatus, {
+          changeReason: _changeReason,
+        });
+        delete updateData.status;
+      }
       const changes = originalMemberDataRef.current
         ? compareObjects(originalMemberDataRef.current, updateData)
         : [];
@@ -270,11 +281,10 @@ export default function MemberDetail() {
 
   const pauseMembershipMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from('members')
-        .update({ status: 'inactive' })
-        .eq('id', id);
-      if (error) throw error;
+      if (!id) throw new Error('Member not found');
+      await updateMemberStatus(id, 'paused', {
+        pausedReason: 'Membership paused by committee',
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
@@ -358,11 +368,23 @@ export default function MemberDetail() {
     setIsSavingWithReason(true);
     try {
       const changes = detectChanges();
-      assertCanSetActive(editedData.status, originalMemberDataRef.current?.status);
+      const previousStatus = originalMemberDataRef.current?.status;
+      const nextStatus = editedData.status as MemberStatus | undefined;
+      const payload = { ...editedData };
+
+      if (
+        nextStatus &&
+        previousStatus &&
+        nextStatus !== previousStatus &&
+        id
+      ) {
+        await updateMemberStatus(id, nextStatus, { changeReason: reason });
+        delete payload.status;
+      }
 
       const { error } = await supabase
         .from('members')
-        .update(editedData)
+        .update(payload)
         .eq('id', id);
 
       if (error) throw error;
@@ -675,6 +697,47 @@ export default function MemberDetail() {
       )
     : null;
 
+  const documentsEnforcedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!id || !memberData?.member) return;
+    if (memberData.member.status !== 'active') return;
+    const missing = activationEligibility?.missingDocuments ?? [];
+    if (missing.length === 0) return;
+
+    const fingerprint = `${id}:${missing.join('|')}`;
+    if (documentsEnforcedRef.current === fingerprint) return;
+    documentsEnforcedRef.current = fingerprint;
+
+    void (async () => {
+      try {
+        await updateMemberStatus(id!, 'pending', {
+          system: true,
+          changeReason:
+            'Required documents missing — membership cannot remain active',
+        });
+        await logActivity(id!, ActivityTypes.MEMBER_UPDATED, {
+          newValues: { status: 'pending' },
+          changeReason:
+            'Required documents missing — membership cannot remain active',
+        });
+        queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+        showToast(
+          'Member set to Pending — upload all required documents before activating.',
+          'warning'
+        );
+      } catch {
+        // DB or validation rejected — ignore duplicate enforcement
+      }
+    })();
+  }, [
+    id,
+    memberData?.member,
+    activationEligibility?.missingDocuments,
+    queryClient,
+    showToast,
+  ]);
+
   if (isLoading) {
     return (
       <CompactLayout>
@@ -711,6 +774,9 @@ export default function MemberDetail() {
             documents: memberData.documents.length,
             payments: payments.length,
           }}
+          documentsOutstanding={
+            (activationEligibility?.missingDocuments.length ?? 0) > 0
+          }
           showJointMember={member.app_type === 'joint'}
           quickActions={{
             onPrint: () => window.print(),
@@ -878,7 +944,10 @@ export default function MemberDetail() {
                             onClick={() => {
                               updateStatus.mutate({
                                 memberId: id!,
-                                newStatus: 'inactive',
+                                newStatus: 'paused',
+                                options: {
+                                  pausedReason: 'Membership paused from profile',
+                                },
                               });
                               setShowActionsMenu(false);
                             }}
@@ -1326,7 +1395,7 @@ export default function MemberDetail() {
       {showPauseConfirm && (
         <ConfirmModal
           title="Pause Membership"
-          message="This will change the member's status to inactive. You can reactivate them later by editing their status."
+          message="This will pause the membership. The member can be reactivated later when payments and documents are complete."
           confirmText="Pause"
           confirmColor="yellow"
           onConfirm={() => pauseMembershipMutation.mutate()}
@@ -1339,15 +1408,34 @@ export default function MemberDetail() {
         isOpen={showActivationConfirm}
         onClose={() => setShowActivationConfirm(false)}
         onConfirm={() => {
+          if (
+            activationEligibility &&
+            activationEligibility.missingDocuments.length > 0
+          ) {
+            showToast(
+              'Cannot activate — upload all required documents first.',
+              'error'
+            );
+            setShowActivationConfirm(false);
+            return;
+          }
           setShowActivationConfirm(false);
           updateStatus.mutate(
-            { memberId: id!, newStatus: 'active' },
+            {
+              memberId: id!,
+              newStatus: 'active',
+              options: { changeReason: 'Activated from member profile' },
+            },
             {
               onSuccess: () => {
                 showToast('Member activated', 'success');
               },
-              onError: () => {
-                showToast('Failed to activate member', 'error');
+              onError: (err: unknown) => {
+                const message =
+                  err instanceof MemberStatusError
+                    ? err.blockers.join(' · ') || err.message
+                    : 'Failed to activate member';
+                showToast(message, 'error');
               },
             }
           );
@@ -1507,7 +1595,7 @@ export default function MemberDetail() {
                       .insert({
                         member_id: member?.id,
                         amount: unpauseCalculation.total,
-                        payment_type: 'reactivation',
+                        payment_type: 'receipt',
                         payment_method: 'cash',
                         payment_status: 'completed',
                         payment_date: new Date().toISOString(),
@@ -1517,19 +1605,37 @@ export default function MemberDetail() {
 
                     if (paymentError) throw paymentError;
 
-                    // Update member status
-                    const { error: memberError } = await supabase
-                      .from('members')
-                      .update({
-                        status: 'active',
-                        late_warnings_count: 0,
-                        paused_date: null,
-                        paused_reason: null,
-                        last_payment_date: new Date().toISOString()
-                      })
-                      .eq('id', member?.id);
+                    const paymentsAfterUnpause = [
+                      ...payments,
+                      {
+                        payment_type: 'receipt',
+                        payment_status: 'completed',
+                        total_amount: unpauseCalculation.total,
+                        created_at: new Date().toISOString(),
+                      },
+                    ];
+                    const unpauseEligibility = getMemberActivationEligibility(
+                      member,
+                      children,
+                      paymentsAfterUnpause
+                    );
+                    if (!unpauseEligibility.canActivate) {
+                      showToast(
+                        unpauseEligibility.blockers.join(' · ') ||
+                          'Payment recorded but membership cannot be activated yet.',
+                        'error'
+                      );
+                      queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+                      return;
+                    }
 
-                    if (memberError) throw memberError;
+                    await updateMemberStatus(member!.id, 'active', {
+                      changeReason: 'Membership reactivated after unpause payment',
+                      patch: {
+                        late_warnings_count: 0,
+                        last_payment_date: new Date().toISOString(),
+                      },
+                    });
 
                     // Success
                     setShowUnpauseModal(false);
@@ -3898,12 +4004,7 @@ function PaymentsTab({ payments, memberId, member, children }: any) {
     setExpandedPayments(newExpanded);
   };
 
-  const paymentTotals = sumPaymentAmounts(payments);
-  const sortedPayments = [...payments].sort((a: any, b: any) => {
-    const aTime = new Date(a.payment_date || a.created_at).getTime();
-    const bTime = new Date(b.payment_date || b.created_at).getTime();
-    return bTime - aTime;
-  });
+  const sortedPayments = sortPaymentsNewestFirst(payments);
 
   const exportPayment = (payment: any) => {
     const dataStr = JSON.stringify(payment, null, 2);
@@ -4032,33 +4133,6 @@ function PaymentsTab({ payments, memberId, member, children }: any) {
 
   return (
     <div className="space-y-4">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center space-x-2 mb-1">
-            <CreditCard className="h-4 w-4 text-blue-600" />
-            <p className="text-xs text-gray-500 font-medium">Total Due</p>
-          </div>
-          <p className="text-2xl font-bold text-blue-600">{formatMoney(paymentTotals.due)}</p>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center space-x-2 mb-1">
-            <PoundSterling className="h-4 w-4 text-green-600" />
-            <p className="text-xs text-gray-500 font-medium">Total Paid</p>
-          </div>
-          <p className="text-2xl font-bold text-green-600">{formatMoney(paymentTotals.paid)}</p>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center space-x-2 mb-1">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <p className="text-xs text-gray-500 font-medium">Outstanding</p>
-          </div>
-          <p className="text-2xl font-bold text-amber-600">{formatMoney(paymentTotals.outstanding)}</p>
-        </div>
-      </div>
-
       {/* Payments Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-start justify-between gap-2">
@@ -4221,23 +4295,6 @@ function PaymentsTab({ payments, memberId, member, children }: any) {
                 );
               })}
             </tbody>
-            <tfoot className="bg-gray-50 border-t border-gray-200">
-              <tr>
-                <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
-                  Totals
-                </td>
-                <td className="px-4 py-3 text-sm font-bold text-right text-gray-900 tabular-nums">
-                  {formatMoney(paymentTotals.due)}
-                </td>
-                <td className="px-4 py-3 text-sm font-bold text-right text-green-700 tabular-nums">
-                  {formatMoney(paymentTotals.paid)}
-                </td>
-                <td className="px-4 py-3 text-sm font-bold text-right text-amber-700 tabular-nums">
-                  {formatMoney(paymentTotals.outstanding)}
-                </td>
-                <td />
-              </tr>
-            </tfoot>
           </table>
         </div>
       </div>
@@ -5387,11 +5444,9 @@ function RecordPaymentModal({
           updatedPayments
         );
         if (eligibility.canActivate) {
-          const { error: statusError } = await supabase
-            .from('members')
-            .update({ status: 'active' })
-            .eq('id', memberId);
-          if (statusError) throw statusError;
+          await updateMemberStatus(memberId, 'active', {
+            changeReason: 'Auto-activated after payment and documents complete',
+          });
           await logActivity(memberId, ActivityTypes.MEMBER_UPDATED, {
             newValues: { status: 'active' },
             changeReason: 'Auto-activated after payment and documents complete',

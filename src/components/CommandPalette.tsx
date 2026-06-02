@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { Search, User, CreditCard, FileText, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -8,12 +9,14 @@ interface SearchResult {
   id?: string;
   title: string;
   subtitle?: string;
-  href: string;
+  href?: string;
+  onSelect?: () => void;
   icon: any;
 }
 
 export default function CommandPalette() {
   const navigate = useNavigate();
+  const { openMember, openDeceased } = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -61,7 +64,7 @@ export default function CommandPalette() {
       // Search deceased
       const { data: deceased } = await supabase
         .from('deceased')
-        .select('id, deceased_name')
+        .select('id, deceased_name, member_id')
         .ilike('deceased_name', `%${searchQuery}%`)
         .limit(3);
 
@@ -75,7 +78,7 @@ export default function CommandPalette() {
             id: member.id,
             title: `${member.first_name} ${member.last_name}`,
             subtitle: member.email,
-            href: `/members/${member.id}`,
+            onSelect: () => openMember(member.id),
             icon: User,
           });
         });
@@ -89,7 +92,7 @@ export default function CommandPalette() {
             id: dec.id,
             title: dec.deceased_name,
             subtitle: 'Deceased Member',
-            href: `/deceased/${dec.id}`,
+            onSelect: () => dec.member_id && openDeceased(dec.member_id),
             icon: Users,
           });
         });
@@ -106,7 +109,7 @@ export default function CommandPalette() {
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [openMember, openDeceased]);
 
   // Quick actions (shown when no query)
   const getQuickActions = (): SearchResult[] => [
@@ -175,7 +178,12 @@ export default function CommandPalette() {
 
       if (e.key === 'Enter' && results[selectedIndex]) {
         e.preventDefault();
-        navigate(results[selectedIndex].href);
+        const result = results[selectedIndex];
+        if (result.onSelect) {
+          result.onSelect();
+        } else if (result.href) {
+          navigate(result.href);
+        }
         setIsOpen(false);
         setQuery('');
       }
@@ -245,7 +253,11 @@ export default function CommandPalette() {
                     <button
                       key={`${result.type}-${result.id || result.href}`}
                       onClick={() => {
-                        navigate(result.href);
+                        if (result.onSelect) {
+                          result.onSelect();
+                        } else if (result.href) {
+                          navigate(result.href);
+                        }
                         setIsOpen(false);
                         setQuery('');
                       }}
