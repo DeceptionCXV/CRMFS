@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { X, Mail, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { incrementLatePaymentWarnings } from '../lib/memberPaymentEnforcement';
 
 interface SendEmailPanelProps {
   member: any;
   onClose: () => void;
+  onEmailSent?: () => void;
 }
 
 type EmailTemplate =
@@ -75,7 +77,7 @@ const EMAIL_TEMPLATES: EmailTemplateOption[] = [
   }
 ];
 
-export default function SendEmailPanel({ member, onClose }: SendEmailPanelProps) {
+export default function SendEmailPanel({ member, onClose, onEmailSent }: SendEmailPanelProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [customSubject, setCustomSubject] = useState('');
   const [customMessage, setCustomMessage] = useState('');
@@ -122,7 +124,12 @@ export default function SendEmailPanel({ member, onClose }: SendEmailPanelProps)
 
         if (error) throw error;
 
+        if (selectedTemplate === 'late_payment_warning') {
+          await incrementLatePaymentWarnings(member.id);
+        }
+
         setSendStatus('success');
+        onEmailSent?.();
       }
     } catch (error: any) {
       console.error('Error sending email:', error);

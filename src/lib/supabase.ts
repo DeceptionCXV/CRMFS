@@ -37,7 +37,14 @@ export interface Member {
   home_phone?: string;
   work_phone?: string;
   email?: string;
-  status: 'pending' | 'active' | 'inactive' | 'deceased';
+  status: 'pending' | 'active' | 'inactive' | 'paused' | 'deceased';
+  late_warnings_count?: number;
+  paused_date?: string | null;
+  paused_reason?: string | null;
+  main_photo_id_url?: string | null;
+  main_proof_address_url?: string | null;
+  joint_photo_id_url?: string | null;
+  joint_proof_address_url?: string | null;
   notes?: string;
   created_at: string;
   updated_at: string;

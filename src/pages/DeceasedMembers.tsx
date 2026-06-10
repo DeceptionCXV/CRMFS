@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { supabase } from '../lib/supabase';
 import { TableSkeleton } from '../components/SkeletonComponents';
 import { FileHeart, Search, Filter, Calendar, Plus, Eye, AlertCircle, CheckCircle, Clock, RefreshCw, Check, MapPin, User, MoreVertical, CreditCard as Edit, Printer, Download, Archive, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function DeceasedMembers() {
-  const navigate = useNavigate();
+  const { openDeceased } = useWorkspace();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
@@ -399,7 +400,7 @@ export default function DeceasedMembers() {
                           !(e.target as HTMLElement).closest('button') &&
                           !(e.target as HTMLElement).closest('a')
                         ) {
-                          navigate(`/deceased/${member?.id || record.member_id}`);
+                          openDeceased(member?.id || record.member_id);
                         }
                       }}
                     >
@@ -484,7 +485,7 @@ export default function DeceasedMembers() {
                               <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                                 <button
                                   onClick={() => {
-                                    navigate(`/deceased/${member?.id || record.member_id}`);
+                                    openDeceased(member?.id || record.member_id);
                                     setShowDeceasedMenu(null);
                                   }}
                                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
@@ -495,7 +496,7 @@ export default function DeceasedMembers() {
                                 
                                 <button
                                   onClick={() => {
-                                    navigate(`/deceased/${member?.id || record.member_id}?edit=true`);
+                                    openDeceased(member?.id || record.member_id, { edit: true });
                                     setShowDeceasedMenu(null);
                                   }}
                                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
@@ -605,7 +606,7 @@ export default function DeceasedMembers() {
                 <div 
                   key={record.id} 
                   className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm"
-                  onDoubleClick={() => navigate(`/deceased/${record.members?.id || record.member_id}`)}
+                  onDoubleClick={() => openDeceased(record.members?.id || record.member_id)}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center">
@@ -642,7 +643,7 @@ export default function DeceasedMembers() {
                             <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                               <button
                                 onClick={() => {
-                                  navigate(`/deceased/${record.members?.id || record.member_id}`);
+                                  openDeceased(record.members?.id || record.member_id);
                                   setShowDeceasedMenu(null);
                                 }}
                                 className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
@@ -652,7 +653,7 @@ export default function DeceasedMembers() {
                               </button>
                               <button
                                 onClick={() => {
-                                  navigate(`/deceased/${record.members?.id || record.member_id}?edit=true`);
+                                  openDeceased(record.members?.id || record.member_id, { edit: true });
                                   setShowDeceasedMenu(null);
                                 }}
                                 className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"

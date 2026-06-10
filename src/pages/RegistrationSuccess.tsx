@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { CheckCircle, Clock, UserPlus, Eye, Info } from 'lucide-react';
 
 export default function RegistrationSuccess() {
   const navigate = useNavigate();
+  const { openMember } = useWorkspace();
   const location = useLocation();
 
   const memberId = location.state?.memberId;
@@ -77,7 +79,7 @@ export default function RegistrationSuccess() {
 
             <div className="space-y-3 pt-4 border-t border-gray-200">
               <button
-                onClick={() => navigate(`/members/${memberId}`)}
+                onClick={() => memberId && openMember(memberId)}
                 className="w-full flex items-center justify-center px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
               >
                 <Eye className="h-5 w-5 mr-2" />

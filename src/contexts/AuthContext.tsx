@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -19,16 +19,52 @@ interface AuthContextType {
   user: SupabaseUser | null;
   profile: UserProfile | null;
   loading: boolean;
+  postLoginSplash: boolean;
+  completePostLoginSplash: () => void;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Set after a real sign-in splash; prevents replay on tab focus / token refresh. */
+const POST_LOGIN_SPLASH_KEY = 'crmfs_post_login_splash_done';
+
+function hasSeenPostLoginSplash(): boolean {
+  try {
+    return sessionStorage.getItem(POST_LOGIN_SPLASH_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markPostLoginSplashSeen(): void {
+  try {
+    sessionStorage.setItem(POST_LOGIN_SPLASH_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearPostLoginSplashSeen(): void {
+  try {
+    sessionStorage.removeItem(POST_LOGIN_SPLASH_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [postLoginSplash, setPostLoginSplash] = useState(false);
+  const hadActiveSessionRef = useRef(false);
+
+  const completePostLoginSplash = () => {
+    markPostLoginSplashSeen();
+    setPostLoginSplash(false);
+  };
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -86,6 +122,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session?.user) {
           console.log('✅ Found existing session:', session.user.email);
+          hadActiveSessionRef.current = true;
+          markPostLoginSplashSeen();
           setUser(session.user);
           setLoading(false);
           // Fetch profile in background without blocking
@@ -116,12 +154,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('🔔 Auth state changed:', _event, session?.user?.email);
 
+      const isSignedIn = !!session?.user;
+
+      // Splash only after an explicit new sign-in — not tab focus, token refresh, or session restore
+      if (
+        _event === 'SIGNED_IN' &&
+        isSignedIn &&
+        !hadActiveSessionRef.current &&
+        !hasSeenPostLoginSplash()
+      ) {
+        setPostLoginSplash(true);
+      }
+
+      if (_event === 'INITIAL_SESSION' && isSignedIn) {
+        hadActiveSessionRef.current = true;
+        markPostLoginSplashSeen();
+      }
+
+      if (_event === 'SIGNED_OUT') {
+        hadActiveSessionRef.current = false;
+        clearPostLoginSplashSeen();
+        setPostLoginSplash(false);
+      }
+
+      hadActiveSessionRef.current = isSignedIn;
+
       setUser(session?.user ?? null);
-      setLoading(false); // Set loading false IMMEDIATELY
-      
-      // Fetch profile in background WITHOUT blocking
+      setLoading(false);
+
       if (session?.user) {
-        fetchProfile(session.user.id); // Fire and forget - no await
+        fetchProfile(session.user.id);
       } else {
         setProfile(null);
       }
@@ -136,6 +198,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
+      hadActiveSessionRef.current = false;
+      clearPostLoginSplashSeen();
+      setPostLoginSplash(false);
       setUser(null);
       setProfile(null);
       window.location.href = '/login';
@@ -146,7 +211,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        postLoginSplash,
+        completePostLoginSplash,
+        signOut,
+        refreshProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

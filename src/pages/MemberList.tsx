@@ -1,13 +1,14 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { supabase, Member } from '../lib/supabase';
 import { TableSkeleton } from '../components/SkeletonComponents';
 import { BulkActionsBar } from '../components/BulkActionsBar';
 import { Search, Filter, Plus, Eye, Mail, Phone, Users, RefreshCw, Check, MoreVertical, CreditCard as Edit, Pause, Trash2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function MemberList() {
-  const navigate = useNavigate();
+  const { openMember } = useWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -388,7 +389,7 @@ export default function MemberList() {
                         !(e.target as HTMLElement).closest('button') &&
                         !(e.target as HTMLElement).closest('a')
                       ) {
-                        navigate(`/members/${member.id}`);
+                        openMember(member.id);
                       }
                     }}
                   >
@@ -472,7 +473,7 @@ export default function MemberList() {
                             <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                               <button
                                 onClick={() => {
-                                  navigate(`/members/${member.id}`);
+                                  openMember(member.id);
                                   setShowMemberMenu(null);
                                 }}
                                 className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
@@ -483,7 +484,7 @@ export default function MemberList() {
                               
                               <button
                                 onClick={() => {
-                                  navigate(`/members/${member.id}?tab=personal&edit=true`);
+                                  openMember(member.id, { tab: 'personal', edit: true });
                                   setShowMemberMenu(null);
                                 }}
                                 className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
@@ -495,7 +496,7 @@ export default function MemberList() {
                               {(member.status as string) !== 'paused' && (
                                 <button
                                   onClick={() => {
-                                    navigate(`/members/${member.id}?action=pause`);
+                                    openMember(member.id, { action: 'pause' });
                                     setShowMemberMenu(null);
                                   }}
                                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
@@ -543,7 +544,7 @@ export default function MemberList() {
                               <button
                                 onClick={() => {
                                   if (confirm('Are you sure you want to delete this member? This action cannot be undone.')) {
-                                    navigate(`/members/${member.id}?action=delete`);
+                                    openMember(member.id, { action: 'delete' });
                                   }
                                   setShowMemberMenu(null);
                                 }}

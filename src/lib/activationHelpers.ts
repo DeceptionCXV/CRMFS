@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getMemberPaymentSummary } from './paymentDisplay';
 
 export interface ActivationCheck {
   hasPendingPayments: boolean;
@@ -8,14 +9,13 @@ export interface ActivationCheck {
 export async function checkOutstandingPayments(memberId: string): Promise<ActivationCheck> {
   const { data } = await supabase
     .from('payments')
-    .select('total_amount, payment_status')
-    .eq('member_id', memberId)
-    .eq('payment_status', 'pending');
+    .select('id, payment_type, payment_status, total_amount, created_at')
+    .eq('member_id', memberId);
 
-  const pendingTotal = (data || []).reduce((sum, p) => sum + Number(p.total_amount), 0);
+  const summary = getMemberPaymentSummary(data || []);
 
   return {
-    hasPendingPayments: pendingTotal > 0,
-    pendingTotal,
+    hasPendingPayments: summary.outstanding > 0,
+    pendingTotal: summary.outstanding,
   };
 }

@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { supabase } from '../lib/supabase';
 import { TableSkeleton } from '../components/SkeletonComponents';
 import { usePaymentStatusUpdate } from '../hooks/useOptimisticUpdates';
-import { checkOutstandingPayments } from '../lib/activationHelpers';
+import { getMemberActivationEligibility } from '../lib/memberActivationRequirements';
+import {
+  fetchMemberStatusContext,
+  updateMemberStatus,
+} from '../lib/memberStatus';
 import { ActivationConfirmModal } from '../components/ActivationConfirmModal';
 import {
   CreditCard,
@@ -24,6 +28,7 @@ import {
 } from 'lucide-react';
 
 export default function Payments() {
+  const { openMember } = useWorkspace();
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -35,6 +40,7 @@ export default function Payments() {
     memberId: string;
     memberName: string;
     pendingTotal: number;
+    activationBlockers: string[];
   } | null>(null);
   const [isCheckingActivation, setIsCheckingActivation] = useState(false);
 
@@ -185,10 +191,11 @@ export default function Payments() {
           </div>
           <div className="space-y-2">
             {overduePayments.slice(0, 3).map((payment: any) => (
-              <Link
+              <button
                 key={payment.id}
-                to={`/members/${payment.member_id}`}
-                className="flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
+                type="button"
+                onClick={() => openMember(payment.member_id)}
+                className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-red-200 hover:bg-red-50 transition-colors text-left"
               >
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-semibold">
@@ -211,7 +218,7 @@ export default function Payments() {
                     </p>
                   )}
                 </div>
-              </Link>
+              </button>
             ))}
             {overduePayments.length > 3 && (
               <p className="text-sm text-red-700 text-center pt-2">
@@ -466,12 +473,37 @@ export default function Payments() {
                               try {
                                 const memberStatus = payment.members?.status;
                                 if (memberStatus === 'pending') {
-                                  const { pendingTotal } = await checkOutstandingPayments(payment.member_id);
+                                  const context = await fetchMemberStatusContext(
+                                    payment.member_id
+                                  );
+                                  const eligibility = context
+                                    ? getMemberActivationEligibility(
+                                        {
+                                          app_type:
+                                            (context.member.app_type as
+                                              | 'single'
+                                              | 'joint') || 'single',
+                                          main_photo_id_url:
+                                            context.member.main_photo_id_url,
+                                          main_proof_address_url:
+                                            context.member.main_proof_address_url,
+                                          joint_photo_id_url:
+                                            context.member.joint_photo_id_url,
+                                          joint_proof_address_url:
+                                            context.member.joint_proof_address_url,
+                                        },
+                                        context.children,
+                                        context.payments
+                                      )
+                                    : null;
                                   setActivationConfirm({
                                     paymentId: payment.id,
                                     memberId: payment.member_id,
                                     memberName: `${payment.members?.first_name} ${payment.members?.last_name}`,
-                                    pendingTotal,
+                                    pendingTotal:
+                                      eligibility?.outstandingBalance ?? 0,
+                                    activationBlockers:
+                                      eligibility?.blockers ?? ['Member not found'],
                                   });
                                 } else {
                                   updatePaymentStatus.mutate({
@@ -508,13 +540,14 @@ export default function Payments() {
                             Pending
                           </button>
                         )}
-                        <Link
-                          to={`/members/${payment.member_id}`}
+                        <button
+                          type="button"
+                          onClick={() => openMember(payment.member_id)}
                           className="inline-flex items-center px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors"
                         >
                           <Eye className="h-4 w-4 mr-1" />
                           View
-                        </Link>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -569,6 +602,7 @@ export default function Payments() {
         memberName={activationConfirm?.memberName ?? ''}
         hasPendingPayments={(activationConfirm?.pendingTotal ?? 0) > 0}
         pendingTotal={activationConfirm?.pendingTotal ?? 0}
+        activationBlockers={activationConfirm?.activationBlockers ?? []}
         isLoading={updatePaymentStatus.isPending}
       />
     </div>
@@ -605,10 +639,13 @@ function AddPaymentModal({ onClose }: { onClose: () => void }) {
     },
   });
 
+  const [activationBlockers, setActivationBlockers] = useState<string[]>([]);
+
   const activateMemberMutation = useMutation({
     mutationFn: async (memberId: string) => {
-      const { error } = await supabase.from('members').update({ status: 'active' }).eq('id', memberId);
-      if (error) throw error;
+      await updateMemberStatus(memberId, 'active', {
+        changeReason: 'Activated after payment recorded (Payments page)',
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
@@ -656,10 +693,25 @@ function AddPaymentModal({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['members'] });
 
       if (result?.needsActivation && result.member) {
-        const { pendingTotal } = await checkOutstandingPayments(formData.member_id);
+        const context = await fetchMemberStatusContext(formData.member_id);
+        const eligibility = context
+          ? getMemberActivationEligibility(
+              {
+                app_type:
+                  (context.member.app_type as 'single' | 'joint') || 'single',
+                main_photo_id_url: context.member.main_photo_id_url,
+                main_proof_address_url: context.member.main_proof_address_url,
+                joint_photo_id_url: context.member.joint_photo_id_url,
+                joint_proof_address_url: context.member.joint_proof_address_url,
+              },
+              context.children,
+              context.payments
+            )
+          : null;
         setPendingMemberId(formData.member_id);
         setPendingMemberName(`${result.member.first_name} ${result.member.last_name}`);
-        setActivationPendingTotal(pendingTotal);
+        setActivationPendingTotal(eligibility?.outstandingBalance ?? 0);
+        setActivationBlockers(eligibility?.blockers ?? ['Member not found']);
         setShowActivationConfirm(true);
       } else {
         onClose();
@@ -815,6 +867,7 @@ function AddPaymentModal({ onClose }: { onClose: () => void }) {
         memberName={pendingMemberName}
         hasPendingPayments={activationPendingTotal > 0}
         pendingTotal={activationPendingTotal}
+        activationBlockers={activationBlockers}
         isLoading={activateMemberMutation.isPending}
       />
     </div>

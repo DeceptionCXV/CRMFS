@@ -2,7 +2,10 @@
 // Wizard to record a member's death and create funeral record
 
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { getRecordDeathMemberId } from '../lib/workspaceStorage';
+import { useWorkspace } from '../contexts/WorkspaceContext';
+import { updateMemberStatus } from '../lib/memberStatus';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import {
@@ -62,12 +65,13 @@ interface DeathFormData {
 export default function RecordDeath() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { memberId } = useParams();
-  const [step, setStep] = useState(memberId ? 2 : 1); // Skip to step 2 if memberId provided
+  const { openDeceased } = useWorkspace();
+  const presetMemberId = getRecordDeathMemberId();
+  const [step, setStep] = useState(presetMemberId ? 2 : 1);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [formData, setFormData] = useState<DeathFormData>({
-    member_id: memberId || '',
+    member_id: presetMemberId || '',
     date_of_death: new Date().toISOString().split('T')[0],
     place_of_death: '',
     next_of_kin_notified: false,
@@ -90,16 +94,15 @@ export default function RecordDeath() {
     },
   });
 
-  // Load member if memberId provided in URL
   useEffect(() => {
-    if (memberId && members) {
-      const member = members.find(m => m.id === memberId);
+    if (presetMemberId && members) {
+      const member = members.find(m => m.id === presetMemberId);
       if (member) {
         setSelectedMember(member);
-        setFormData(prev => ({ ...prev, member_id: memberId }));
+        setFormData(prev => ({ ...prev, member_id: presetMemberId }));
       }
     }
-  }, [memberId, members]);
+  }, [presetMemberId, members]);
 
   // Create death record mutation
   const createDeathRecord = useMutation({
@@ -162,18 +165,9 @@ export default function RecordDeath() {
 
       console.log('✅ Deceased record created:', deceasedRecord);
 
-      // 2. Update member status to deceased
-      const { error: memberError } = await supabase
-        .from('members')
-        .update({
-          status: 'deceased',
-        })
-        .eq('id', data.member_id);
-
-      if (memberError) {
-        console.error('❌ Error updating member status:', memberError);
-        throw memberError;
-      }
+      await updateMemberStatus(data.member_id, 'deceased', {
+        changeReason: 'Death recorded',
+      });
 
       console.log('✅ Member status updated to deceased');
 
@@ -186,7 +180,7 @@ export default function RecordDeath() {
 
       console.log('✅ Navigating to deceased detail page');
       // Navigate to deceased detail page instead of member page
-      navigate(`/deceased/${formData.member_id}`);
+      openDeceased(formData.member_id);
     },
     onError: (error) => {
       console.error('❌ Mutation failed:', error);

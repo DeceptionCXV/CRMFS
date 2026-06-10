@@ -1,9 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { getAddMemberDraftRef, setAddMemberDraftRef } from '../lib/workspaceStorage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logActivity, ActivityTypes } from '../lib/activityLogger';
+import {
+  getMissingRequiredDocuments,
+  registrationDocumentInput,
+  resolveMemberStatusOnRegistration,
+} from '../lib/memberActivationRequirements';
+import { updateMemberStatus } from '../lib/memberStatus';
+import { APPLICATION_VERSION, PAPER_FORM_VERSION } from '../lib/version';
+import { useToast } from '../contexts/ToastContext';
 import DateInput from '../components/DateInput';
 import RegistrationSidebar from '../components/RegistrationSidebar';
 import { ActivationConfirmModal } from '../components/ActivationConfirmModal';
@@ -162,9 +171,18 @@ export default function AddMember() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const toast = useToast();
   const savedApplication = location.state?.savedApplication;
-  const draftRef = searchParams.get('draft');
+  const draftFromQuery = searchParams.get('draft');
+  const draftRef = draftFromQuery ?? getAddMemberDraftRef();
   const initializingRef = useRef(false);
+
+  useEffect(() => {
+    if (draftFromQuery) {
+      setAddMemberDraftRef(draftFromQuery);
+      navigate('/members/new', { replace: true });
+    }
+  }, [draftFromQuery, navigate]);
   const lastSavedStepRef = useRef<number | null>(null);
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -184,7 +202,6 @@ export default function AddMember() {
   const [mainDob, setMainDob] = useState('');
 
   // Paper form tracking (kept for data submission, no longer shown as a step)
-  const paperFormVersion = 'v01.25';
   const applicationDate = new Date().toISOString().split('T')[0];
 
   // GP Details (shared for both applicants)
@@ -526,6 +543,40 @@ export default function AddMember() {
   const totalDue = joiningFee + proRataAnnualFee + adjustmentValue;
   const coverageEndDate = getCoverageEndDate(signupDate, adjustmentValue);
 
+  const registrationDocInput = useMemo(
+    () =>
+      registrationDocumentInput({
+        appType: formData.app_type,
+        mainPhotoId,
+        mainProofOfAddress,
+        jointPhotoId,
+        jointProofOfAddress,
+        children: formData.children ?? [],
+        childBirthCerts,
+      }),
+    [
+      formData.app_type,
+      formData.children,
+      mainPhotoId,
+      mainProofOfAddress,
+      jointPhotoId,
+      jointProofOfAddress,
+      childBirthCerts,
+    ]
+  );
+
+  const missingRequiredDocuments = useMemo(
+    () => getMissingRequiredDocuments(registrationDocInput),
+    [registrationDocInput]
+  );
+  const documentsComplete = missingRequiredDocuments.length === 0;
+
+  useEffect(() => {
+    if (currentStep === 9 && paymentReceived && !documentsComplete) {
+      setPaymentReceived(false);
+    }
+  }, [currentStep, paymentReceived, documentsComplete]);
+
   const submitMutation = useMutation({
     mutationFn: async () => {
       // Generate membership number
@@ -546,19 +597,29 @@ export default function AddMember() {
       const submitAdjustmentValue = adjustmentAmount ? parseFloat(adjustmentAmount) : 0;
       const submitTotalDue = submitMainJoiningFee + submitJointJoiningFee + submitMainProRataFee + submitJointProRataFee + submitAdjustmentValue;
 
-      // Status based on payment toggle
-      const memberStatus = paymentReceived ? 'active' : 'pending';
-      const paymentStatus = paymentReceived ? 'completed' : 'pending';
+      const { status: memberStatus, paymentStatus } = resolveMemberStatusOnRegistration(
+        paymentReceived,
+        registrationDocumentInput({
+          appType: formData.app_type,
+          mainPhotoId,
+          mainProofOfAddress,
+          jointPhotoId,
+          jointProofOfAddress,
+          children: formData.children ?? [],
+          childBirthCerts,
+        })
+      );
 
       const memberInsert: any = {
         membership_number: membershipNumber,
         app_type: formData.app_type, title: formData.title, first_name: formData.first_name, middle_name: formData.middle_name || null, last_name: formData.last_name,
         dob: formData.dob, address_line_1: formData.address_line_1, town: formData.town, city: formData.city,
         postcode: formData.postcode, mobile: formData.mobile, home_phone: formData.home_phone, work_phone: formData.work_phone,
-        email: formData.email, status: memberStatus,
+        email: formData.email,
+        status: 'pending',
         // Paper form tracking and GDPR consents
         consent_obtained_via: 'paper_form',
-        paper_form_version: paperFormVersion,
+        paper_form_version: PAPER_FORM_VERSION,
         paper_form_date: applicationDate,
         paper_form_filed: true,
         // All consents obtained via paper form = true
@@ -680,9 +741,22 @@ export default function AddMember() {
         late_fee: 0, 
         total_amount: submitTotalDue, 
         payment_status: paymentStatus,
+        payment_date: signupDate,
         join_date: signupDate,
         notes: adjustmentReason ? `Adjustment: ${adjustmentReason}` : null,
       });
+
+      if (paymentStatus === 'completed' && submitTotalDue > 0) {
+        await supabase.from('payments').insert({
+          member_id: memberId,
+          payment_type: 'receipt',
+          payment_method: formData.payment_method,
+          total_amount: submitTotalDue,
+          payment_status: 'completed',
+          payment_date: signupDate,
+          notes: 'Registration payment received',
+        });
+      }
 
       // Upload documents to Supabase Storage
       const uploadDoc = async (file: File, path: string): Promise<string | null> => {
@@ -737,6 +811,12 @@ export default function AddMember() {
       }
 
       await logActivity(memberId, ActivityTypes.APPLICATION_SUBMITTED);
+
+      if (memberStatus === 'active') {
+        await updateMemberStatus(memberId, 'active', {
+          changeReason: 'Registration complete — payment and documents satisfied',
+        });
+      }
 
       return { memberId, membershipNumber };
     },
@@ -895,14 +975,7 @@ export default function AddMember() {
     return true;
   };
 
-  const hasAnyMissingDocs = (): boolean => {
-    if (!mainPhotoId || !mainProofOfAddress) return true;
-    if (formData.app_type === 'joint' && (!jointPhotoId || !jointProofOfAddress)) return true;
-    if ((formData.children?.length ?? 0) > 0) {
-      if (formData.children.some((_: any, i: number) => !childBirthCerts[i])) return true;
-    }
-    return false;
-  };
+  const hasAnyMissingDocs = (): boolean => !documentsComplete;
 
   const validateDeclarationStep = (): boolean => {
     const errors: Record<string, string> = {};
@@ -1169,7 +1242,41 @@ export default function AddMember() {
           childBirthCerts={childBirthCerts} setChildBirthCerts={setChildBirthCerts}
           validationErrors={documentValidationErrors}
         />}
-        {currentStep === 9 && <StepPayment formData={formData} updateFormData={updateFormData} validationErrors={validationErrors} membershipType={membershipType} setMembershipType={setMembershipType} signupDate={signupDate} setSignupDate={setSignupDate} adjustmentAmount={adjustmentAmount} setAdjustmentAmount={setAdjustmentAmount} adjustmentReason={adjustmentReason} setAdjustmentReason={setAdjustmentReason} paymentReceived={paymentReceived} setPaymentReceived={setPaymentReceived} mainDob={mainDob} calculateAge={calculateAge} joiningFee={joiningFee} mainJoiningFee={mainJoiningFee} jointJoiningFee={jointJoiningFee} proRataAnnualFee={proRataAnnualFee} mainProRataFee={mainProRataFee} jointProRataFee={jointProRataFee} adjustmentValue={adjustmentValue} totalDue={totalDue} coverageEndDate={coverageEndDate} />}
+        {currentStep === 9 && (
+          <StepPayment
+            formData={formData}
+            updateFormData={updateFormData}
+            validationErrors={validationErrors}
+            membershipType={membershipType}
+            setMembershipType={setMembershipType}
+            signupDate={signupDate}
+            setSignupDate={setSignupDate}
+            adjustmentAmount={adjustmentAmount}
+            setAdjustmentAmount={setAdjustmentAmount}
+            adjustmentReason={adjustmentReason}
+            setAdjustmentReason={setAdjustmentReason}
+            paymentReceived={paymentReceived}
+            setPaymentReceived={setPaymentReceived}
+            documentsComplete={documentsComplete}
+            missingRequiredDocuments={missingRequiredDocuments}
+            onPaymentBlocked={() => {
+              toast.error(
+                'Upload all required documents before marking payment as received for activation.'
+              );
+            }}
+            mainDob={mainDob}
+            calculateAge={calculateAge}
+            joiningFee={joiningFee}
+            mainJoiningFee={mainJoiningFee}
+            jointJoiningFee={jointJoiningFee}
+            proRataAnnualFee={proRataAnnualFee}
+            mainProRataFee={mainProRataFee}
+            jointProRataFee={jointProRataFee}
+            adjustmentValue={adjustmentValue}
+            totalDue={totalDue}
+            coverageEndDate={coverageEndDate}
+          />
+        )}
       </div>
 
           <div className="flex justify-between items-center bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 transition-colors">
@@ -1180,11 +1287,14 @@ export default function AddMember() {
               </button>
             </div>
 
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center text-center">
               <span className="text-sm text-gray-600 dark:text-gray-400">Step {currentVisibleStepIndex + 1} of {visibleSteps.length}</span>
               {applicationReference && (
                 <span className="text-xs text-emerald-600 mt-1 font-mono">{applicationReference}</span>
               )}
+              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 tabular-nums">
+                Application Version {APPLICATION_VERSION}
+              </span>
             </div>
 
             {currentStep < steps.length - 1 ? (
@@ -1195,9 +1305,14 @@ export default function AddMember() {
             ) : (
               <button
                 onClick={() => {
-                  if (paymentReceived) {
+                  if (paymentReceived && documentsComplete) {
                     setShowActivationConfirm(true);
                   } else {
+                    if (paymentReceived && !documentsComplete) {
+                      toast.warning(
+                        'Payment recorded, but member will stay Pending until required documents are uploaded.'
+                      );
+                    }
                     submitMutation.mutate();
                   }
                 }}
@@ -2376,7 +2491,36 @@ function StepDocuments({
   );
 }
 
-function StepPayment({ formData, updateFormData, validationErrors, membershipType, setMembershipType, signupDate, setSignupDate, adjustmentAmount, setAdjustmentAmount, adjustmentReason, setAdjustmentReason, paymentReceived, setPaymentReceived, mainDob, calculateAge, joiningFee, mainJoiningFee, jointJoiningFee, proRataAnnualFee, mainProRataFee, jointProRataFee, adjustmentValue, totalDue, coverageEndDate }: any) {
+function StepPayment({
+  formData,
+  updateFormData,
+  validationErrors,
+  membershipType,
+  setMembershipType,
+  signupDate,
+  setSignupDate,
+  adjustmentAmount,
+  setAdjustmentAmount,
+  adjustmentReason,
+  setAdjustmentReason,
+  paymentReceived,
+  setPaymentReceived,
+  documentsComplete,
+  missingRequiredDocuments,
+  onPaymentBlocked,
+  mainDob,
+  calculateAge,
+  joiningFee,
+  mainJoiningFee,
+  jointJoiningFee,
+  proRataAnnualFee,
+  mainProRataFee,
+  jointProRataFee,
+  adjustmentValue,
+  totalDue,
+  coverageEndDate,
+}: any) {
+  const canActivateOnPayment = documentsComplete;
   const SHOW_ADJUSTMENT_FIELD = false;
 
   return (
@@ -2588,32 +2732,81 @@ function StepPayment({ formData, updateFormData, validationErrors, membershipTyp
           <div className="flex items-center justify-between mb-3">
             <div>
               <h4 className="text-sm font-semibold text-gray-900">Payment Status</h4>
-              <p className="text-xs text-gray-500 mt-1">Mark as received to activate membership immediately</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {canActivateOnPayment
+                  ? 'Mark as received to activate membership immediately'
+                  : 'Payment can be recorded; activation requires all documents first'}
+              </p>
             </div>
             <button
               type="button"
-              onClick={() => setPaymentReceived(!paymentReceived)}
-              className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${paymentReceived ? 'bg-emerald-600' : 'bg-gray-300'}`}
+              onClick={() => {
+                if (!paymentReceived && !canActivateOnPayment) {
+                  onPaymentBlocked?.();
+                  return;
+                }
+                setPaymentReceived(!paymentReceived);
+              }}
+              className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${
+                paymentReceived ? 'bg-emerald-600' : 'bg-gray-300'
+              } ${!canActivateOnPayment && !paymentReceived ? 'opacity-60' : ''}`}
+              aria-label="Toggle payment received"
             >
               <span className={`inline-block h-8 w-8 transform rounded-full bg-white transition-transform ${paymentReceived ? 'translate-x-11' : 'translate-x-1'}`} />
             </button>
           </div>
 
-          <div className={`rounded-lg p-4 text-sm ${paymentReceived ? 'bg-emerald-50 border border-emerald-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+          {!canActivateOnPayment && (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-medium mb-1">Required documents missing</p>
+              <p className="text-xs text-amber-800 mb-2">
+                Upload these on the Documents step (or go back) before activation:
+              </p>
+              <ul className="text-xs text-amber-800 list-disc list-inside space-y-0.5">
+                {missingRequiredDocuments.map((item: string) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div
+            className={`rounded-lg p-4 text-sm ${
+              paymentReceived
+                ? canActivateOnPayment
+                  ? 'bg-emerald-50 border border-emerald-200'
+                  : 'bg-amber-50 border border-amber-200'
+                : 'bg-yellow-50 border border-yellow-200'
+            }`}
+          >
             {paymentReceived ? (
-              <div className="flex items-center text-emerald-800">
-                <CheckCircle className="h-5 w-5 mr-2" />
-                <div>
-                  <p className="font-medium">Payment Received</p>
-                  <p className="text-xs text-emerald-600">Member will be set to ACTIVE status</p>
+              canActivateOnPayment ? (
+                <div className="flex items-center text-emerald-800">
+                  <CheckCircle className="h-5 w-5 mr-2" />
+                  <div>
+                    <p className="font-medium">Payment Received</p>
+                    <p className="text-xs text-emerald-600">Member will be set to ACTIVE status</p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center text-amber-800">
+                  <AlertTriangle className="h-5 w-5 mr-2" />
+                  <div>
+                    <p className="font-medium">Payment Received</p>
+                    <p className="text-xs text-amber-700">
+                      Member will be saved as PENDING until required documents are uploaded
+                    </p>
+                  </div>
+                </div>
+              )
             ) : (
               <div className="flex items-center text-yellow-800">
                 <Clock className="h-5 w-5 mr-2" />
                 <div>
                   <p className="font-medium">Payment Pending</p>
-                  <p className="text-xs text-yellow-600">Member will be set to PENDING status until payment received</p>
+                  <p className="text-xs text-yellow-600">
+                    Member will be set to PENDING status until payment received
+                  </p>
                 </div>
               </div>
             )}

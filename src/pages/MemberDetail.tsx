@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getActiveMemberId, consumeMemberViewOptions } from '../lib/workspaceStorage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { logActivity, ActivityTypes, getCurrentUserInfo } from '../lib/activityLogger';
@@ -13,12 +14,35 @@ import { useNavigationGuard } from '../contexts/NavigationGuardContext';
 import { compareObjects } from '../hooks/useFormChangeTracker';
 import { useToast } from '../contexts/ToastContext';
 import { checkOutstandingPayments } from '../lib/activationHelpers';
+import {
+  getMemberActivationEligibility,
+  hasRequiredDocuments,
+  memberDocumentInputFromMember,
+} from '../lib/memberActivationRequirements';
+import {
+  formatMoney,
+  formatPaymentDateTime,
+  formatPaymentMethod,
+  formatPaymentReason,
+  getMemberPaymentDisplayStatus,
+  getMemberPaymentSummary,
+  getPaymentTableRowAmounts,
+  isObligationPayment,
+  sortPaymentsNewestFirst,
+} from '../lib/paymentDisplay';
+import { enforceOverduePaymentRules } from '../lib/memberPaymentEnforcement';
+import {
+  updateMemberStatus,
+  MemberStatusError,
+  type MemberStatus,
+} from '../lib/memberStatus';
 import { ActivationConfirmModal } from '../components/ActivationConfirmModal';
 import { ArrowLeft, User, Users, Baby, Heart, Calendar, Phone, MapPin, CreditCard as Edit, Save, X, Trash2, Pause, CreditCard, AlertTriangle, PoundSterling, Stethoscope, CheckSquare, CheckCircle, FileText, Upload, AlertCircle, Eye, Download, Info, PlayCircle, Shield, MoreVertical, ChevronDown, ChevronUp, Clock, Plus } from 'lucide-react';
 
 export default function MemberDetail() {
-  const { id } = useParams();
+  const id = getActiveMemberId();
   const navigate = useNavigate();
+  const memberViewAppliedRef = useRef(false);
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('personal');
   const [isEditing, setIsEditing] = useState(false);
@@ -33,7 +57,9 @@ export default function MemberDetail() {
   const [paymentReceived, setPaymentReceived] = useState(false);
   const [showActivationConfirm, setShowActivationConfirm] = useState(false);
   const [activationPendingTotal, setActivationPendingTotal] = useState(0);
+  const [activationBlockers, setActivationBlockers] = useState<string[]>([]);
   const [isCheckingActivation, setIsCheckingActivation] = useState(false);
+  const { showToast } = useToast();
   const [unpausePendingTotal, setUnpausePendingTotal] = useState(0);
 
   // GDPR Admin Tools
@@ -69,6 +95,20 @@ export default function MemberDetail() {
   const originalMemberDataRef = useRef<any>(null);
   const [showChangeReasonModal, setShowChangeReasonModal] = useState(false);
   const [isSavingWithReason, setIsSavingWithReason] = useState(false);
+
+  useEffect(() => {
+    if (!id) {
+      navigate('/members', { replace: true });
+      return;
+    }
+    if (memberViewAppliedRef.current) return;
+    memberViewAppliedRef.current = true;
+    const view = consumeMemberViewOptions();
+    if (view.tab) setActiveTab(view.tab);
+    if (view.edit) setIsEditing(true);
+    if (view.action === 'pause') setShowPauseConfirm(true);
+    if (view.action === 'delete') setShowDeleteConfirm(true);
+  }, [id, navigate]);
 
   // Tabs that support inline editing via the Edit Member button
   // Other tabs (children, nok, medical, gp, declarations) use their own modals
@@ -150,6 +190,20 @@ export default function MemberDetail() {
   const updateMutation = useMutation({
     mutationFn: async (data: any & { _changeReason?: string }) => {
       const { _changeReason, ...updateData } = data;
+      const previousStatus = originalMemberDataRef.current?.status;
+      const nextStatus = updateData.status as MemberStatus | undefined;
+
+      if (
+        nextStatus &&
+        previousStatus &&
+        nextStatus !== previousStatus &&
+        id
+      ) {
+        await updateMemberStatus(id, nextStatus, {
+          changeReason: _changeReason,
+        });
+        delete updateData.status;
+      }
       const changes = originalMemberDataRef.current
         ? compareObjects(originalMemberDataRef.current, updateData)
         : [];
@@ -178,6 +232,9 @@ export default function MemberDetail() {
       setEditedData(null);
       originalMemberDataRef.current = null;
       clearUnsavedChanges();
+    },
+    onError: (error: Error) => {
+      showToast(error.message || 'Failed to save member', 'error');
     },
   });
 
@@ -224,11 +281,10 @@ export default function MemberDetail() {
 
   const pauseMembershipMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from('members')
-        .update({ status: 'inactive' })
-        .eq('id', id);
-      if (error) throw error;
+      if (!id) throw new Error('Member not found');
+      await updateMemberStatus(id, 'paused', {
+        pausedReason: 'Membership paused by committee',
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
@@ -312,10 +368,23 @@ export default function MemberDetail() {
     setIsSavingWithReason(true);
     try {
       const changes = detectChanges();
+      const previousStatus = originalMemberDataRef.current?.status;
+      const nextStatus = editedData.status as MemberStatus | undefined;
+      const payload = { ...editedData };
+
+      if (
+        nextStatus &&
+        previousStatus &&
+        nextStatus !== previousStatus &&
+        id
+      ) {
+        await updateMemberStatus(id, nextStatus, { changeReason: reason });
+        delete payload.status;
+      }
 
       const { error } = await supabase
         .from('members')
-        .update(editedData)
+        .update(payload)
         .eq('id', id);
 
       if (error) throw error;
@@ -348,8 +417,12 @@ export default function MemberDetail() {
           navigate(targetPath);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save:', error);
+      showToast(
+        error?.message || 'Failed to save member',
+        'error'
+      );
     } finally {
       setIsSavingWithReason(false);
     }
@@ -405,30 +478,36 @@ export default function MemberDetail() {
     return age;
   };
 
-  // Calculate unpause fees
-  const calculateUnpauseFees = () => {
+  // Calculate unpause fees (joining + annual — independent of payment outstanding)
+  const calculateUnpauseFees = useCallback(() => {
     if (!memberData?.member) return;
 
-    const age = calculateAge(memberData.member.date_of_birth);
-    if (!age) return;
-
+    const age = calculateAge(memberData.member.dob || memberData.member.date_of_birth);
     let joiningFee = 0;
 
-    // Age-based joining fee
-    if (age >= 18 && age <= 25) joiningFee = 75;
-    else if (age >= 26 && age <= 35) joiningFee = 100;
-    else if (age >= 36 && age <= 45) joiningFee = 200;
-    else if (age >= 46 && age <= 55) joiningFee = 300;
-    else if (age >= 56) joiningFee = 500;
+    if (age) {
+      if (age >= 18 && age <= 25) joiningFee = 75;
+      else if (age >= 26 && age <= 35) joiningFee = 100;
+      else if (age >= 36 && age <= 45) joiningFee = 200;
+      else if (age >= 46 && age <= 55) joiningFee = 300;
+      else if (age >= 56) joiningFee = 500;
+    }
 
-    const total = joiningFee + 100;
+    const membershipFee = 100;
+    const total = joiningFee + membershipFee;
 
     setUnpauseCalculation({
       joiningFee,
-      membershipFee: 100,
-      total
+      membershipFee,
+      total,
     });
-  };
+  }, [memberData?.member]);
+
+  useEffect(() => {
+    if (memberData?.member?.status === 'paused') {
+      calculateUnpauseFees();
+    }
+  }, [memberData?.member?.status, memberData?.member?.dob, calculateUnpauseFees]);
 
   // Log access when member detail page is opened
   useEffect(() => {
@@ -577,15 +656,87 @@ export default function MemberDetail() {
     }
   }, [showAccessLog, memberData?.member?.id]);
 
-  // Calculate total paid and outstanding balance
-  const totalPaid = memberData?.payments
-    ?.filter((p: any) => p.payment_status === 'completed')
-    .reduce((sum: number, p: any) => sum + Number(p.total_amount), 0) || 0;
+  const paymentSummary = memberData?.payments
+    ? getMemberPaymentSummary(memberData.payments)
+    : null;
+  const paymentDisplayStatus = memberData?.payments
+    ? getMemberPaymentDisplayStatus(memberData.payments)
+    : null;
 
-  const totalAmountDue = memberData?.payments
-    ?.reduce((sum: number, p: any) => sum + Number(p.total_amount), 0) || 0;
+  const overdueEnforcedRef = useRef<string | null>(null);
 
-  const outstandingBalance = Math.max(0, totalAmountDue - totalPaid);
+  useEffect(() => {
+    if (!id || !memberData?.member || !memberData.payments?.length) return;
+
+    const fingerprint = `${id}:${memberData.payments.map((p: any) => `${p.id}-${p.payment_status}`).join(',')}:${paymentSummary?.outstanding ?? 0}`;
+    if (overdueEnforcedRef.current === fingerprint) return;
+
+    const display = getMemberPaymentDisplayStatus(memberData.payments);
+    if (display.kind !== 'failed') {
+      overdueEnforcedRef.current = fingerprint;
+      return;
+    }
+
+    enforceOverduePaymentRules(
+      id,
+      memberData.member,
+      memberData.payments
+    ).then((result) => {
+      overdueEnforcedRef.current = fingerprint;
+      if (result.changed) {
+        queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+      }
+    });
+  }, [id, memberData?.member, memberData?.payments, paymentSummary?.outstanding, queryClient]);
+
+  const activationEligibility = memberData?.member
+    ? getMemberActivationEligibility(
+        memberData.member,
+        memberData.children || [],
+        memberData.payments || []
+      )
+    : null;
+
+  const documentsEnforcedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!id || !memberData?.member) return;
+    if (memberData.member.status !== 'active') return;
+    const missing = activationEligibility?.missingDocuments ?? [];
+    if (missing.length === 0) return;
+
+    const fingerprint = `${id}:${missing.join('|')}`;
+    if (documentsEnforcedRef.current === fingerprint) return;
+    documentsEnforcedRef.current = fingerprint;
+
+    void (async () => {
+      try {
+        await updateMemberStatus(id!, 'pending', {
+          system: true,
+          changeReason:
+            'Required documents missing — membership cannot remain active',
+        });
+        await logActivity(id!, ActivityTypes.MEMBER_UPDATED, {
+          newValues: { status: 'pending' },
+          changeReason:
+            'Required documents missing — membership cannot remain active',
+        });
+        queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+        showToast(
+          'Member set to Pending — upload all required documents before activating.',
+          'warning'
+        );
+      } catch {
+        // DB or validation rejected — ignore duplicate enforcement
+      }
+    })();
+  }, [
+    id,
+    memberData?.member,
+    activationEligibility?.missingDocuments,
+    queryClient,
+    showToast,
+  ]);
 
   if (isLoading) {
     return (
@@ -623,6 +774,9 @@ export default function MemberDetail() {
             documents: memberData.documents.length,
             payments: payments.length,
           }}
+          documentsOutstanding={
+            (activationEligibility?.missingDocuments.length ?? 0) > 0
+          }
           showJointMember={member.app_type === 'joint'}
           quickActions={{
             onPrint: () => window.print(),
@@ -698,7 +852,7 @@ export default function MemberDetail() {
                         className="fixed inset-0 z-10"
                         onClick={() => setShowActionsMenu(false)}
                       />
-                      <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                      <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20 overflow-visible">
                         {isEditableTab ? (
                           <button
                             onClick={() => {
@@ -759,25 +913,41 @@ export default function MemberDetail() {
                         <div className="border-t border-gray-100 my-1"></div>
 
                         {member.status === 'paused' ? (
-                          <button
-                            onClick={async () => {
-                              calculateUnpauseFees();
-                              const { pendingTotal } = await checkOutstandingPayments(id!);
-                              setUnpausePendingTotal(pendingTotal);
-                              setShowUnpauseModal(true);
-                              setShowActionsMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-emerald-600 hover:bg-emerald-50 flex items-center"
-                          >
-                            <PlayCircle className="h-4 w-4 mr-3" />
-                            Unpause Member
-                          </button>
+                          <div className="px-4 py-2">
+                            <button
+                              onClick={async () => {
+                                if ((paymentSummary?.outstanding ?? 0) > 0) {
+                                  setShowActionsMenu(false);
+                                  return;
+                                }
+                                calculateUnpauseFees();
+                                const { pendingTotal } = await checkOutstandingPayments(id!);
+                                setUnpausePendingTotal(pendingTotal);
+                                setShowUnpauseModal(true);
+                                setShowActionsMenu(false);
+                              }}
+                              disabled={(paymentSummary?.outstanding ?? 0) > 0}
+                              className="w-full py-1 text-left text-sm text-emerald-600 hover:bg-emerald-50 flex items-center rounded-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                            >
+                              <PlayCircle className="h-4 w-4 mr-3" />
+                              Unpause Member
+                            </button>
+                            {(paymentSummary?.outstanding ?? 0) > 0 && (
+                              <p className="mt-1.5 text-xs leading-snug text-amber-800 bg-amber-50 rounded-md px-2 py-1.5">
+                                Clear outstanding balance of £
+                                {paymentSummary!.outstanding.toFixed(2)} before unpause.
+                              </p>
+                            )}
+                          </div>
                         ) : member.status === 'active' ? (
                           <button
                             onClick={() => {
                               updateStatus.mutate({
                                 memberId: id!,
-                                newStatus: 'inactive',
+                                newStatus: 'paused',
+                                options: {
+                                  pausedReason: 'Membership paused from profile',
+                                },
                               });
                               setShowActionsMenu(false);
                             }}
@@ -787,30 +957,46 @@ export default function MemberDetail() {
                             <Pause className="h-4 w-4 mr-3" />
                             {updateStatus.isPending ? 'Pausing...' : 'Pause Member'}
                           </button>
-                        ) : member.status === 'inactive' && (
-                          <div className="relative group">
+                        ) : (member.status === 'inactive' || member.status === 'pending') && (
+                          <div className="px-4 py-2 border-b border-gray-50 last:border-b-0">
                             <button
                               onClick={async () => {
                                 setShowActionsMenu(false);
                                 setIsCheckingActivation(true);
                                 try {
+                                  const eligibility = getMemberActivationEligibility(
+                                    member,
+                                    children,
+                                    payments
+                                  );
                                   const { pendingTotal } = await checkOutstandingPayments(id!);
-                                  setActivationPendingTotal(pendingTotal);
+                                  setActivationPendingTotal(
+                                    Math.max(pendingTotal, eligibility.outstandingBalance)
+                                  );
+                                  setActivationBlockers(
+                                    eligibility.blockers.filter(
+                                      (b) => !b.includes('Outstanding balance')
+                                    )
+                                  );
                                   setShowActivationConfirm(true);
                                 } finally {
                                   setIsCheckingActivation(false);
                                 }
                               }}
-                              disabled={updateStatus.isPending || isCheckingActivation || outstandingBalance > 0}
-                              className="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={
+                                updateStatus.isPending ||
+                                isCheckingActivation ||
+                                !activationEligibility?.canActivate
+                              }
+                              className="w-full py-1 text-left text-sm text-green-600 rounded-md hover:bg-green-50 flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                             >
-                              <CheckCircle className="h-4 w-4 mr-3" />
+                              <CheckCircle className="h-4 w-4 mr-3 shrink-0" />
                               {isCheckingActivation ? 'Checking...' : 'Activate Member'}
                             </button>
-                            {outstandingBalance > 0 && (
-                              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 w-64 shadow-lg">
-                                Cannot activate — outstanding balance of £{outstandingBalance.toFixed(2)} remaining. Please record the full payment before activating.
-                              </div>
+                            {!activationEligibility?.canActivate && activationEligibility && (
+                              <p className="mt-1.5 text-xs leading-snug text-amber-800 bg-amber-50 rounded-md px-2 py-1.5">
+                                {activationEligibility.blockers.join(' · ')}
+                              </p>
                             )}
                           </div>
                         )}
@@ -872,8 +1058,39 @@ export default function MemberDetail() {
               <span>{age ? `${age} years old` : 'N/A'}</span>
             </div>
             <div className="flex items-center gap-2">
-              <PoundSterling className="h-4 w-4" />
-              <span>£{totalPaid.toFixed(2)} Total Paid</span>
+              {(() => {
+                const outstanding = paymentSummary?.outstanding ?? 0;
+                const isClear =
+                  outstanding === 0 &&
+                  (paymentDisplayStatus?.kind === 'clear' || member.status === 'paused');
+                const isFailed = paymentDisplayStatus?.kind === 'failed';
+                return (
+                  <>
+                    {isClear ? (
+                      <CheckCircle className="h-4 w-4 text-emerald-300" />
+                    ) : isFailed ? (
+                      <AlertCircle className="h-4 w-4 text-red-300" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-amber-300" />
+                    )}
+                    <span
+                      className={
+                        isClear
+                          ? 'text-emerald-100 font-medium'
+                          : isFailed
+                          ? 'text-red-200 font-semibold'
+                          : 'text-amber-100 font-medium'
+                      }
+                    >
+                      {isClear
+                        ? 'No Outstanding Payments'
+                        : isFailed
+                        ? 'Failed Payment'
+                        : 'Payment Due'}
+                    </span>
+                  </>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4" />
@@ -906,7 +1123,9 @@ export default function MemberDetail() {
               <div className="flex flex-wrap gap-3">
                 {/* Documents Status */}
                 {(() => {
-                  const hasMainDocs = member.main_photo_id_url && member.main_proof_address_url;
+                  const hasMainDocs = hasRequiredDocuments(
+                    memberDocumentInputFromMember(member, children)
+                  );
                   return (
                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
                       hasMainDocs
@@ -967,12 +1186,22 @@ export default function MemberDetail() {
                   Membership Suspended
                 </h4>
                 <p className="text-sm text-red-800 mt-1">
-                  This membership was paused{member.paused_date && ` on ${new Date(member.paused_date).toLocaleDateString()}`}
-                  {member.paused_reason && ` - ${member.paused_reason}`}
+                  This membership was paused
+                  {member.paused_date &&
+                    ` on ${new Date(member.paused_date).toLocaleDateString('en-GB')}`}
+                  {(member.paused_reason ||
+                    (member.late_warnings_count != null &&
+                      member.late_warnings_count > 0)) &&
+                    ` – ${
+                      member.paused_reason ||
+                      `Late payment - ${member.late_warnings_count} warning${
+                        member.late_warnings_count === 1 ? '' : 's'
+                      } issued`
+                    }`}
                 </p>
                 <p className="text-sm text-red-800 mt-2">
-                  <strong>To reactivate:</strong> Member must pay joining fee (£{unpauseCalculation.joiningFee})
-                  + annual membership fee (£100) = <strong>£{unpauseCalculation.total}</strong>
+                  <strong>To reactivate:</strong> Member must pay joining fee (£{unpauseCalculation.joiningFee.toFixed(2)})
+                  + annual membership fee (£{unpauseCalculation.membershipFee.toFixed(2)}) = <strong>£{unpauseCalculation.total.toFixed(2)}</strong>
                 </p>
                 <p className="text-xs text-red-700 mt-2">
                   Note: Late fees are waived upon reactivation.
@@ -1033,11 +1262,20 @@ export default function MemberDetail() {
         )}
 
         {activeTab === 'documents' && (
-          <DocumentsTab member={memberData?.member} memberId={id!} />
+          <DocumentsTab
+            member={memberData?.member}
+            memberId={id!}
+            children={memberData?.children || []}
+          />
         )}
 
         {activeTab === 'payments' && (
-          <PaymentsTab payments={memberData?.payments || []} memberId={id!} />
+          <PaymentsTab
+            payments={memberData?.payments || []}
+            memberId={id!}
+            member={member}
+            children={children}
+          />
         )}
 
         {activeTab === 'activity' && (
@@ -1157,7 +1395,7 @@ export default function MemberDetail() {
       {showPauseConfirm && (
         <ConfirmModal
           title="Pause Membership"
-          message="This will change the member's status to inactive. You can reactivate them later by editing their status."
+          message="This will pause the membership. The member can be reactivated later when payments and documents are complete."
           confirmText="Pause"
           confirmColor="yellow"
           onConfirm={() => pauseMembershipMutation.mutate()}
@@ -1170,12 +1408,42 @@ export default function MemberDetail() {
         isOpen={showActivationConfirm}
         onClose={() => setShowActivationConfirm(false)}
         onConfirm={() => {
+          if (
+            activationEligibility &&
+            activationEligibility.missingDocuments.length > 0
+          ) {
+            showToast(
+              'Cannot activate — upload all required documents first.',
+              'error'
+            );
+            setShowActivationConfirm(false);
+            return;
+          }
           setShowActivationConfirm(false);
-          updateStatus.mutate({ memberId: id!, newStatus: 'active' });
+          updateStatus.mutate(
+            {
+              memberId: id!,
+              newStatus: 'active',
+              options: { changeReason: 'Activated from member profile' },
+            },
+            {
+              onSuccess: () => {
+                showToast('Member activated', 'success');
+              },
+              onError: (err: unknown) => {
+                const message =
+                  err instanceof MemberStatusError
+                    ? err.blockers.join(' · ') || err.message
+                    : 'Failed to activate member';
+                showToast(message, 'error');
+              },
+            }
+          );
         }}
         memberName={member ? `${member.first_name} ${member.last_name}` : ''}
         hasPendingPayments={activationPendingTotal > 0}
         pendingTotal={activationPendingTotal}
+        activationBlockers={activationBlockers}
         isLoading={updateStatus.isPending}
       />
 
@@ -1240,8 +1508,22 @@ export default function MemberDetail() {
               </div>
             </div>
 
-            {/* Outstanding payments warning */}
-            {unpausePendingTotal > 0 && (
+            {(paymentSummary?.outstanding ?? 0) > 0 && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-900">
+                    Outstanding balance: £{paymentSummary!.outstanding.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-red-800 mt-0.5">
+                    Record payments on the Payments tab until the balance is £0 before
+                    unpausing.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {unpausePendingTotal > 0 && (paymentSummary?.outstanding ?? 0) === 0 && (
               <div className="mb-4 p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div>
@@ -1294,6 +1576,13 @@ export default function MemberDetail() {
               </button>
               <button
                 onClick={async () => {
+                  if ((paymentSummary?.outstanding ?? 0) > 0) {
+                    showToast(
+                      'Clear the outstanding balance before unpausing.',
+                      'error'
+                    );
+                    return;
+                  }
                   if (!paymentReceived) {
                     alert('Please confirm payment has been received');
                     return;
@@ -1306,7 +1595,7 @@ export default function MemberDetail() {
                       .insert({
                         member_id: member?.id,
                         amount: unpauseCalculation.total,
-                        payment_type: 'reactivation',
+                        payment_type: 'receipt',
                         payment_method: 'cash',
                         payment_status: 'completed',
                         payment_date: new Date().toISOString(),
@@ -1316,19 +1605,37 @@ export default function MemberDetail() {
 
                     if (paymentError) throw paymentError;
 
-                    // Update member status
-                    const { error: memberError } = await supabase
-                      .from('members')
-                      .update({
-                        status: 'active',
-                        late_warnings_count: 0,
-                        paused_date: null,
-                        paused_reason: null,
-                        last_payment_date: new Date().toISOString()
-                      })
-                      .eq('id', member?.id);
+                    const paymentsAfterUnpause = [
+                      ...payments,
+                      {
+                        payment_type: 'receipt',
+                        payment_status: 'completed',
+                        total_amount: unpauseCalculation.total,
+                        created_at: new Date().toISOString(),
+                      },
+                    ];
+                    const unpauseEligibility = getMemberActivationEligibility(
+                      member,
+                      children,
+                      paymentsAfterUnpause
+                    );
+                    if (!unpauseEligibility.canActivate) {
+                      showToast(
+                        unpauseEligibility.blockers.join(' · ') ||
+                          'Payment recorded but membership cannot be activated yet.',
+                        'error'
+                      );
+                      queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+                      return;
+                    }
 
-                    if (memberError) throw memberError;
+                    await updateMemberStatus(member!.id, 'active', {
+                      changeReason: 'Membership reactivated after unpause payment',
+                      patch: {
+                        late_warnings_count: 0,
+                        last_payment_date: new Date().toISOString(),
+                      },
+                    });
 
                     // Success
                     setShowUnpauseModal(false);
@@ -1340,7 +1647,9 @@ export default function MemberDetail() {
                     alert('Failed to reactivate membership. Please try again.');
                   }
                 }}
-                disabled={!paymentReceived}
+                disabled={
+                  !paymentReceived || (paymentSummary?.outstanding ?? 0) > 0
+                }
                 className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Reactivate Membership
@@ -1587,6 +1896,9 @@ export default function MemberDetail() {
         <SendEmailPanel
           member={member}
           onClose={() => setShowEmailPanel(false)}
+          onEmailSent={() => {
+            queryClient.invalidateQueries({ queryKey: ['member-detail', id] });
+          }}
         />
       )}
 
@@ -1705,12 +2017,21 @@ function PersonalInfoTab({ member, jointMember, isEditing, isEditingJoint, updat
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Status</p>
                 {isEditing ? (
-                  <select value={member?.status || ''} onChange={(e) => updateField?.('status', e.target.value)} className={inputCls()}>
-                    <option value="pending">Pending</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="paused">Paused</option>
-                  </select>
+                  <>
+                    <select value={member?.status || ''} onChange={(e) => updateField?.('status', e.target.value)} className={inputCls()}>
+                      <option value="pending">Pending</option>
+                      {member?.status === 'active' && (
+                        <option value="active">Active</option>
+                      )}
+                      <option value="inactive">Inactive</option>
+                      <option value="paused">Paused</option>
+                    </select>
+                    {member?.status !== 'active' && (
+                      <p className="text-xs text-amber-700 mt-1">
+                        Use Actions → Activate Member when payment and documents are complete.
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
                     member?.status === 'active' ? 'text-emerald-600' : member?.status === 'paused' ? 'text-red-600' : 'text-yellow-600'
@@ -2745,22 +3066,33 @@ function ChildrenTab({ children, memberId }: any) {
 
   if (children.length === 0) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="text-center py-8">
-          <Baby className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-          <p className="text-gray-500 font-medium">No children registered</p>
-          <p className="text-sm text-gray-400 mt-1 mb-4">
-            Add children to this membership
-          </p>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
-          >
-            <Baby className="h-4 w-4 mr-2" />
-            Add Child
-          </button>
+      <>
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="text-center py-8">
+            <Baby className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+            <p className="text-gray-500 font-medium">No children registered</p>
+            <p className="text-sm text-gray-400 mt-1 mb-4">
+              Add children to this membership
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              <Baby className="h-4 w-4 mr-2" />
+              Add Child
+            </button>
+          </div>
         </div>
-      </div>
+
+        {showAddModal && (
+          <ChildModal
+            isOpen={showAddModal}
+            onClose={() => setShowAddModal(false)}
+            memberId={memberId}
+          />
+        )}
+      </>
     );
   }
 
@@ -2772,6 +3104,7 @@ function ChildrenTab({ children, memberId }: any) {
           Children ({children.length})
         </h3>
         <button
+          type="button"
           onClick={() => setShowAddModal(true)}
           className="inline-flex items-center px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
         >
@@ -2801,8 +3134,8 @@ function ChildrenTab({ children, memberId }: any) {
                     <h4 className="text-base font-semibold text-gray-900">
                       {child.first_name} {child.last_name}
                     </h4>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                      {child.gender || 'N/A'}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 capitalize">
+                      {child.relation || 'N/A'}
                     </span>
                     {age !== null && (
                       <span className="text-sm text-gray-500">
@@ -3178,15 +3511,21 @@ function MedicalInfoTab({ medicalInfo, memberId }: any) {
   );
 }
 
-// Documents Tab Component (Simple placeholder)
-function DocumentsTab({ member, memberId }: any) {
+// Documents Tab Component
+function DocumentsTab({ member, memberId, children = [] }: { member: any; memberId: string; children?: any[] }) {
   const [showUploadModal, setShowUploadModal] = useState(false);
-  
-  const hasAnyDocuments = member?.main_photo_id_url ||
+
+  const hasLegacyChildDocs =
+    member?.children_documents && Object.keys(member.children_documents).length > 0;
+  const hasAnyChildDoc = children.some((c: any) => c.birth_certificate_url);
+
+  const hasAnyDocuments =
+    member?.main_photo_id_url ||
     member?.main_proof_address_url ||
     member?.joint_photo_id_url ||
     member?.joint_proof_address_url ||
-    (member?.children_documents && Object.keys(member.children_documents).length > 0);
+    hasAnyChildDoc ||
+    hasLegacyChildDocs;
 
   return (
     <>
@@ -3197,11 +3536,12 @@ function DocumentsTab({ member, memberId }: any) {
             Uploaded Documents
           </h3>
           <button
+            type="button"
             onClick={() => setShowUploadModal(true)}
             className="inline-flex items-center px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
           >
             <Upload className="h-4 w-4 mr-1" />
-            {hasAnyDocuments ? 'Manage Documents' : 'Upload Documents'}
+            Upload &amp; Manage Documents
           </button>
         </div>
 
@@ -3455,8 +3795,8 @@ function DocumentsTab({ member, memberId }: any) {
         </div>
       )}
 
-      {/* Children Documents (if applicable) */}
-      {member?.children_documents && Object.keys(member.children_documents).length > 0 && (
+      {/* Children Documents */}
+      {children.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center">
             <Baby className="h-4 w-4 mr-2 text-emerald-600" />
@@ -3464,46 +3804,110 @@ function DocumentsTab({ member, memberId }: any) {
           </h4>
 
           <div className="space-y-4">
-            {Object.entries(member.children_documents).map(([key, url]: [string, any], index: number) => (
-              <div
-                key={key}
-                className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                <div className="flex items-center flex-1">
-                  <div className="p-2 rounded-lg mr-3 bg-emerald-100">
-                    <FileText className="h-6 w-6 text-emerald-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      Child {index + 1} - Birth Certificate / Passport
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Uploaded • Required
-                    </p>
-                  </div>
-                </div>
+            {children.map((child: any) => {
+              const childName = [child.first_name, child.last_name].filter(Boolean).join(' ') || 'Child';
+              const certUrl = child.birth_certificate_url;
 
-                <div className="flex items-center space-x-2">
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                    title="View document"
-                  >
-                    <Eye className="h-4 w-4 text-emerald-600" />
-                  </a>
-                  <a
-                    href={url}
-                    download
-                    className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
-                    title="Download document"
-                  >
-                    <Download className="h-4 w-4 text-blue-600" />
-                  </a>
+              return (
+                <div
+                  key={child.id}
+                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                >
+                  <div className="flex items-center flex-1">
+                    <div
+                      className={`p-2 rounded-lg mr-3 ${
+                        certUrl ? 'bg-emerald-100' : 'bg-gray-100'
+                      }`}
+                    >
+                      <FileText
+                        className={`h-6 w-6 ${certUrl ? 'text-emerald-600' : 'text-gray-400'}`}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {childName} — Birth Certificate / Passport
+                      </p>
+                      {certUrl ? (
+                        <p className="text-xs text-gray-500">Uploaded • Optional</p>
+                      ) : (
+                        <p className="text-xs text-red-600">Not uploaded • Optional</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {certUrl ? (
+                    <div className="flex items-center space-x-2">
+                      <a
+                        href={certUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
+                        title="View document"
+                      >
+                        <Eye className="h-4 w-4 text-emerald-600" />
+                      </a>
+                      <a
+                        href={certUrl}
+                        download
+                        className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                        title="Download document"
+                      >
+                        <Download className="h-4 w-4 text-blue-600" />
+                      </a>
+                    </div>
+                  ) : (
+                    <span className="px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">
+                      Missing
+                    </span>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
+
+            {/* Legacy children_documents on member row (if any URLs not on children records) */}
+            {hasLegacyChildDocs &&
+              Object.entries(member.children_documents).map(([key, url]: [string, any]) => {
+                const alreadyShown = children.some((c: any) => c.birth_certificate_url === url);
+                if (alreadyShown || !url) return null;
+
+                return (
+                  <div
+                    key={`legacy-${key}`}
+                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    <div className="flex items-center flex-1">
+                      <div className="p-2 rounded-lg mr-3 bg-emerald-100">
+                        <FileText className="h-6 w-6 text-emerald-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          Birth Certificate / Passport (archived)
+                        </p>
+                        <p className="text-xs text-gray-500">Uploaded</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
+                        title="View document"
+                      >
+                        <Eye className="h-4 w-4 text-emerald-600" />
+                      </a>
+                      <a
+                        href={url}
+                        download
+                        className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                        title="Download document"
+                      >
+                        <Download className="h-4 w-4 text-blue-600" />
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}
@@ -3540,13 +3944,49 @@ function DocumentsTab({ member, memberId }: any) {
         onClose={() => setShowUploadModal(false)}
         memberId={memberId}
         member={member}
+        children={children}
       />
     )}
   </>
   );
 }
 
-function PaymentsTab({ payments, memberId }: any) {
+function PaymentBreakdownDetail({ payment, notes }: { payment: any; notes?: string | null }) {
+  const lineItems = [
+    { label: 'Main Member - Joining Fee', value: payment.main_joining_fee },
+    { label: 'Main Member - Membership Fee', value: payment.main_membership_fee },
+    { label: 'Main Member - Miscellaneous', value: payment.main_misc },
+    { label: 'Joint Member - Joining Fee', value: payment.joint_joining_fee },
+    { label: 'Joint Member - Membership Fee', value: payment.joint_membership_fee },
+    { label: 'Joint Member - Miscellaneous', value: payment.joint_misc },
+    { label: 'Late Fee', value: payment.late_fee, isLate: true },
+  ].filter((item) => Number(item.value) > 0);
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-1.5">
+      <p className="text-xs font-semibold text-gray-700 mb-2">Fee breakdown</p>
+      {lineItems.length === 0 ? (
+        <p className="text-xs text-gray-500">No line-item breakdown recorded.</p>
+      ) : (
+        lineItems.map((item) => (
+          <div key={item.label} className="flex justify-between text-xs">
+            <span className={item.isLate ? 'text-red-600' : 'text-gray-600'}>{item.label}:</span>
+            <span className={item.isLate ? 'text-red-600 font-medium' : 'text-gray-900 font-medium'}>
+              {formatMoney(Number(item.value))}
+            </span>
+          </div>
+        ))
+      )}
+      <div className="flex justify-between text-xs pt-2 mt-2 border-t border-gray-200">
+        <span className="text-gray-900 font-semibold">Total due</span>
+        <span className="text-gray-900 font-bold">{formatMoney(Number(payment.total_amount))}</span>
+      </div>
+      {notes && <p className="text-xs text-gray-600 mt-2 italic">Note: {notes}</p>}
+    </div>
+  );
+}
+
+function PaymentsTab({ payments, memberId, member, children }: any) {
   const queryClient = useQueryClient();
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showRecordModal, setShowRecordModal] = useState(false);
@@ -3564,12 +4004,7 @@ function PaymentsTab({ payments, memberId }: any) {
     setExpandedPayments(newExpanded);
   };
 
-  const totalPaid = payments
-    .filter((p: any) => p.payment_status === 'completed')
-    .reduce((sum: number, p: any) => sum + Number(p.total_amount), 0);
-
-  const totalAmountDueTab = payments.reduce((sum: number, p: any) => sum + Number(p.total_amount), 0);
-  const pendingAmount = Math.max(0, totalAmountDueTab - totalPaid);
+  const sortedPayments = sortPaymentsNewestFirst(payments);
 
   const exportPayment = (payment: any) => {
     const dataStr = JSON.stringify(payment, null, 2);
@@ -3682,6 +4117,9 @@ function PaymentsTab({ payments, memberId }: any) {
         {showRecordModal && (
           <RecordPaymentModal
             memberId={memberId}
+            member={member}
+            children={children || []}
+            payments={payments}
             onClose={() => setShowRecordModal(false)}
             onSuccess={() => {
               queryClient.invalidateQueries({ queryKey: ['member-detail', memberId] });
@@ -3695,232 +4133,169 @@ function PaymentsTab({ payments, memberId }: any) {
 
   return (
     <div className="space-y-4">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center space-x-2 mb-1">
-            <PoundSterling className="h-4 w-4 text-green-600" />
-            <p className="text-xs text-gray-500 font-medium">Total Paid</p>
-          </div>
-          <p className="text-2xl font-bold text-green-600">£{totalPaid.toFixed(2)}</p>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center space-x-2 mb-1">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            <p className="text-xs text-gray-500 font-medium">Pending</p>
-          </div>
-          <p className="text-2xl font-bold text-yellow-600">£{pendingAmount.toFixed(2)}</p>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center space-x-2 mb-1">
-            <CreditCard className="h-4 w-4 text-blue-600" />
-            <p className="text-xs text-gray-500 font-medium">Total Payments</p>
-          </div>
-          <p className="text-2xl font-bold text-blue-600">{payments.length}</p>
-        </div>
-      </div>
-
-      {/* Payments List */}
+      {/* Payments Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Payment History</h3>
+        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Payment History</h3>
+            <p className="text-xs text-gray-500 mt-0.5 max-w-xl">
+              Due is the amount expected when recorded; Paid is what has been received; Outstanding is what remains.
+            </p>
+          </div>
           <button
             onClick={() => setShowRecordModal(true)}
-            className="inline-flex items-center px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+            className="inline-flex items-center px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors shrink-0"
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
             Record Payment
           </button>
         </div>
-        <div className="divide-y divide-gray-200">
-          {payments.map((payment: any) => {
-            return (
-              <div key={payment.id} className="p-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    {/* Clickable Header to Expand/Collapse */}
-                    <div 
-                      onClick={() => togglePaymentExpanded(payment.id)}
-                      className="cursor-pointer"
-                    >
-                      {/* Header */}
-                      <div className="flex items-center space-x-2 mb-2">
-                        <span className="text-lg font-bold text-gray-900">
-                          £{Number(payment.total_amount).toFixed(2)}
-                        </span>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
-                            payment.payment_status === 'completed'
-                              ? 'bg-mosque-gold-100 text-mosque-gold-800'
-                              : payment.payment_status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide w-8" />
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Date / Time
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Reason
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Method
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Due
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Paid
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Outstanding
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide w-12">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {sortedPayments.map((payment: any) => {
+                const amounts = getPaymentTableRowAmounts(payment, sortedPayments);
+                const isExpanded = expandedPayments.has(payment.id);
+                return (
+                  <Fragment key={payment.id}>
+                    <tr className="hover:bg-gray-50/80 transition-colors">
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => togglePaymentExpanded(payment.id)}
+                          className="p-1 rounded hover:bg-gray-200 text-gray-500"
+                          aria-label={isExpanded ? 'Hide breakdown' : 'Show breakdown'}
                         >
-                          {payment.payment_status}
-                        </span>
-                        {expandedPayments.has(payment.id) ? (
-                          <ChevronUp className="h-4 w-4 text-gray-400" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-gray-400" />
-                        )}
-                      </div>
-
-                      {/* Status Note - shown only when note exists */}
-                      {payment.status_note && (
-                        <div className="mb-2">
-                          <p className="text-xs text-gray-600 italic bg-gray-50 rounded px-2 py-1">Note: {payment.status_note}</p>
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+                        {formatPaymentDateTime(payment)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        <div className="flex flex-col gap-0.5">
+                          <span>{formatPaymentReason(payment, sortedPayments)}</span>
+                          {payment.reference_no && (
+                            <span className="text-xs text-gray-500">Ref: {payment.reference_no}</span>
+                          )}
+                          {payment.status_note && (
+                            <span className="text-xs text-amber-800 italic">{payment.status_note}</span>
+                          )}
                         </div>
-                      )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                        {formatPaymentMethod(payment.payment_method)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-medium text-gray-900 tabular-nums">
+                        {formatMoney(amounts.due)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-medium text-green-700 tabular-nums">
+                        {amounts.paid > 0 ? formatMoney(amounts.paid) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-medium tabular-nums">
+                        {amounts.outstanding > 0 ? (
+                          <span className="text-amber-700">{formatMoney(amounts.outstanding)}</span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right relative">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPaymentMenu(showPaymentMenu === payment.id ? null : payment.id)
+                          }
+                          className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+                        >
+                          <MoreVertical className="h-4 w-4 text-gray-500" />
+                        </button>
 
-                      {/* Payment Info */}
-                      <div className="flex items-center space-x-4 text-sm text-gray-500 mb-2">
-                        <span className="capitalize">{payment.payment_type?.replace('_', ' ')}</span>
-                        <span>•</span>
-                        <span className="capitalize">{payment.payment_method?.replace('_', ' ')}</span>
-                        <span>•</span>
-                        <span>
-                          {payment.payment_date 
-                            ? new Date(payment.payment_date).toLocaleDateString()
-                            : new Date(payment.created_at).toLocaleDateString()}
-                        </span>
-                        {payment.reference_no && (
+                        {showPaymentMenu === payment.id && (
                           <>
-                            <span>•</span>
-                            <span>Ref: {payment.reference_no}</span>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setShowPaymentMenu(null)}
+                            />
+                            <div className="absolute right-4 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                              <button
+                                onClick={() => {
+                                  setEditingPayment(payment);
+                                  setShowAdjustModal(true);
+                                  setShowPaymentMenu(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                              >
+                                <Edit className="h-4 w-4 mr-3 text-gray-400" />
+                                Adjust Payment
+                              </button>
+                              <button
+                                onClick={() => {
+                                  exportPayment(payment);
+                                  setShowPaymentMenu(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                              >
+                                <Download className="h-4 w-4 mr-3 text-gray-400" />
+                                Export Payment
+                              </button>
+                              <button
+                                onClick={() => {
+                                  printPayment(payment);
+                                  setShowPaymentMenu(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
+                              >
+                                <FileText className="h-4 w-4 mr-3 text-gray-400" />
+                                Print Invoice/Receipt
+                              </button>
+                            </div>
                           </>
                         )}
-                      </div>
-                    </div>
-
-                    {/* Breakdown - Only shown when expanded */}
-                    {expandedPayments.has(payment.id) && (
-                      <div className="bg-gray-50 rounded-lg p-3 space-y-1.5 mt-3">
-                        <p className="text-xs font-semibold text-gray-700 mb-2">Payment Breakdown:</p>
-                        
-                        {payment.main_joining_fee && Number(payment.main_joining_fee) > 0 && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Main Member - Joining Fee:</span>
-                            <span className="text-gray-900 font-medium">£{Number(payment.main_joining_fee).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        {payment.main_membership_fee && Number(payment.main_membership_fee) > 0 && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Main Member - Membership Fee:</span>
-                            <span className="text-gray-900 font-medium">£{Number(payment.main_membership_fee).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        {payment.main_misc && Number(payment.main_misc) > 0 && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Main Member - Miscellaneous:</span>
-                            <span className="text-gray-900 font-medium">£{Number(payment.main_misc).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        {payment.joint_joining_fee && Number(payment.joint_joining_fee) > 0 && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Joint Member - Joining Fee:</span>
-                            <span className="text-gray-900 font-medium">£{Number(payment.joint_joining_fee).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        {payment.joint_membership_fee && Number(payment.joint_membership_fee) > 0 && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Joint Member - Membership Fee:</span>
-                            <span className="text-gray-900 font-medium">£{Number(payment.joint_membership_fee).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        {payment.joint_misc && Number(payment.joint_misc) > 0 && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600">Joint Member - Miscellaneous:</span>
-                            <span className="text-gray-900 font-medium">£{Number(payment.joint_misc).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        {payment.late_fee && Number(payment.late_fee) > 0 && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-600 text-red-600">Late Fee:</span>
-                            <span className="text-red-600 font-medium">£{Number(payment.late_fee).toFixed(2)}</span>
-                          </div>
-                        )}
-                        
-                        <div className="flex justify-between text-xs pt-2 mt-2 border-t border-gray-200">
-                          <span className="text-gray-900 font-semibold">Total:</span>
-                          <span className="text-gray-900 font-bold">£{Number(payment.total_amount).toFixed(2)}</span>
-                        </div>
-                      </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="bg-gray-50">
+                        <td colSpan={8} className="px-4 py-3">
+                          <PaymentBreakdownDetail payment={payment} notes={payment.notes} />
+                        </td>
+                      </tr>
                     )}
-
-                    {payment.notes && expandedPayments.has(payment.id) && (
-                      <p className="text-xs text-gray-600 mt-2 italic">Note: {payment.notes}</p>
-                    )}
-                  </div>
-
-                  {/* 3-Dot Menu */}
-                  <div className="relative ml-4">
-                    <button
-                      onClick={() => setShowPaymentMenu(showPaymentMenu === payment.id ? null : payment.id)}
-                      className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
-                    >
-                      <MoreVertical className="h-4 w-4 text-gray-500" />
-                    </button>
-
-                    {showPaymentMenu === payment.id && (
-                      <>
-                        {/* Backdrop */}
-                        <div 
-                          className="fixed inset-0 z-10" 
-                          onClick={() => setShowPaymentMenu(null)}
-                        />
-                        
-                        {/* Dropdown */}
-                        <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                          <button
-                            onClick={() => {
-                              setEditingPayment(payment);
-                              setShowAdjustModal(true);
-                              setShowPaymentMenu(null);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                          >
-                            <Edit className="h-4 w-4 mr-3 text-gray-400" />
-                            Adjust Payment
-                          </button>
-                          
-                          <button
-                            onClick={() => {
-                              exportPayment(payment);
-                              setShowPaymentMenu(null);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                          >
-                            <Download className="h-4 w-4 mr-3 text-gray-400" />
-                            Export Payment
-                          </button>
-                          
-                          <button
-                            onClick={() => {
-                              printPayment(payment);
-                              setShowPaymentMenu(null);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                          >
-                            <FileText className="h-4 w-4 mr-3 text-gray-400" />
-                            Print Invoice/Receipt
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -3944,6 +4319,9 @@ function PaymentsTab({ payments, memberId }: any) {
       {showRecordModal && (
         <RecordPaymentModal
           memberId={memberId}
+          member={member}
+          children={children || []}
+          payments={payments}
           onClose={() => setShowRecordModal(false)}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['member-detail', memberId] });
@@ -4360,11 +4738,12 @@ interface ChildModalProps {
 
 function ChildModal({ isOpen, onClose, memberId, child }: ChildModalProps) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     first_name: child?.first_name || '',
     last_name: child?.last_name || '',
     dob: child?.dob || '',
-    gender: child?.gender || '',
+    relation: child?.relation || '',
   });
   const [errors, setErrors] = useState<any>({});
 
@@ -4387,6 +4766,10 @@ function ChildModal({ isOpen, onClose, memberId, child }: ChildModalProps) {
       queryClient.invalidateQueries({ queryKey: ['member-detail', memberId] });
       onClose();
     },
+    onError: (error: Error) => {
+      console.error('Child save failed:', error);
+      toast.error(child ? 'Failed to update child. Please try again.' : 'Failed to add child. Please try again.');
+    },
   });
 
   const validate = () => {
@@ -4394,8 +4777,8 @@ function ChildModal({ isOpen, onClose, memberId, child }: ChildModalProps) {
     if (!formData.first_name.trim()) newErrors.first_name = 'First name is required';
     if (!formData.last_name.trim()) newErrors.last_name = 'Last name is required';
     if (!formData.dob) newErrors.dob = 'Date of birth is required';
-    if (!formData.gender) newErrors.gender = 'Gender is required';
-    
+    if (!formData.relation) newErrors.relation = 'Relation is required';
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -4483,21 +4866,23 @@ function ChildModal({ isOpen, onClose, memberId, child }: ChildModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Gender *
+              Relation *
             </label>
             <select
-              value={formData.gender}
-              onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+              value={formData.relation}
+              onChange={(e) => setFormData({ ...formData, relation: e.target.value })}
               className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${
-                errors.gender ? 'border-red-300' : 'border-gray-300'
+                errors.relation ? 'border-red-300' : 'border-gray-300'
               }`}
             >
-              <option value="">Select gender</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
+              <option value="">Select</option>
+              <option value="son">Son</option>
+              <option value="daughter">Daughter</option>
+              <option value="stepson">Stepson</option>
+              <option value="stepdaughter">Stepdaughter</option>
             </select>
-            {errors.gender && (
-              <p className="text-xs text-red-600 mt-1">{errors.gender}</p>
+            {errors.relation && (
+              <p className="text-xs text-red-600 mt-1">{errors.relation}</p>
             )}
           </div>
 
@@ -4971,7 +5356,22 @@ function MedicalInfoModal({ isOpen, onClose, memberId, info }: MedicalInfoModalP
 }
 
 // Record Payment Modal Component
-function RecordPaymentModal({ memberId, onClose, onSuccess }: { memberId: string; onClose: () => void; onSuccess: () => void }) {
+function RecordPaymentModal({
+  memberId,
+  member,
+  children = [],
+  payments = [],
+  onClose,
+  onSuccess,
+}: {
+  memberId: string;
+  member?: any;
+  children?: any[];
+  payments?: any[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     payment_type: '',
     payment_method: 'cash',
@@ -4987,11 +5387,11 @@ function RecordPaymentModal({ memberId, onClose, onSuccess }: { memberId: string
       const amount = parseFloat(formData.amount);
       const { error } = await supabase.from('payments').insert({
         member_id: memberId,
-        payment_type: formData.payment_type,
+        payment_type: 'receipt',
         payment_method: formData.payment_method,
         total_amount: amount,
-        main_joining_fee: formData.payment_type === 'registration' ? amount : 0,
-        main_membership_fee: formData.payment_type !== 'registration' ? amount : 0,
+        main_joining_fee: 0,
+        main_membership_fee: 0,
         main_misc: 0,
         joint_joining_fee: 0,
         joint_membership_fee: 0,
@@ -5000,11 +5400,80 @@ function RecordPaymentModal({ memberId, onClose, onSuccess }: { memberId: string
         payment_date: formData.payment_date,
         payment_status: 'completed',
         reference_no: formData.reference_no || null,
-        notes: formData.notes || null,
+        notes: [
+          formData.notes?.trim(),
+          formData.payment_type
+            ? `Recorded against: ${formData.payment_type.replace(/_/g, ' ')}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' — ') || null,
       });
       if (error) throw error;
+
+      const updatedPayments = [
+        ...payments,
+        {
+          payment_type: 'receipt',
+          payment_status: 'completed',
+          total_amount: amount,
+          created_at: new Date().toISOString(),
+        },
+      ];
+
+      const summary = getMemberPaymentSummary(updatedPayments);
+
+      const pendingObligations = payments.filter(
+        (p: any) => isObligationPayment(p) && p.payment_status === 'pending'
+      );
+      if (summary.outstanding === 0) {
+        for (const obligation of pendingObligations) {
+          if (!obligation.id) continue;
+          const { error: completeError } = await supabase
+            .from('payments')
+            .update({ payment_status: 'completed' })
+            .eq('id', obligation.id);
+          if (completeError) throw completeError;
+        }
+      }
+
+      if (member?.status === 'pending' && member) {
+        const eligibility = getMemberActivationEligibility(
+          member,
+          children,
+          updatedPayments
+        );
+        if (eligibility.canActivate) {
+          await updateMemberStatus(memberId, 'active', {
+            changeReason: 'Auto-activated after payment and documents complete',
+          });
+          await logActivity(memberId, ActivityTypes.MEMBER_UPDATED, {
+            newValues: { status: 'active' },
+            changeReason: 'Auto-activated after payment and documents complete',
+          });
+          return { autoActivated: true as const };
+        }
+      }
+
+      if (summary.outstanding === 0) {
+        return { autoActivated: false as const, fullyPaid: true as const };
+      }
+
+      return { autoActivated: false as const, fullyPaid: false as const };
     },
-    onSuccess,
+    onSuccess: (result) => {
+      if (result?.autoActivated) {
+        showToast('Payment recorded — member activated', 'success');
+      } else if (result?.fullyPaid) {
+        showToast('Payment recorded — balance cleared', 'success');
+      } else {
+        showToast('Payment recorded', 'success');
+      }
+      onSuccess();
+    },
+    onError: () => {
+      showToast('Failed to record payment. Please try again.', 'error');
+    },
   });
 
   const validate = () => {
@@ -5023,6 +5492,8 @@ function RecordPaymentModal({ memberId, onClose, onSuccess }: { memberId: string
     if (validate()) createMutation.mutate();
   };
 
+  const balanceSummary = getMemberPaymentSummary(payments);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in zoom-in-95 duration-200">
@@ -5033,18 +5504,22 @@ function RecordPaymentModal({ memberId, onClose, onSuccess }: { memberId: string
               <X className="h-5 w-5" />
             </button>
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Logs money received against the member&apos;s balance. Due: {formatMoney(balanceSummary.totalDue)}
+            {' · '}Outstanding: {formatMoney(balanceSummary.outstanding)}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Payment Type</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Applies to</label>
               <select
                 value={formData.payment_type}
                 onChange={(e) => setFormData({ ...formData, payment_type: e.target.value })}
                 className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${errors.payment_type ? 'border-red-500' : 'border-gray-300'}`}
               >
-                <option value="" disabled>Select payment type</option>
+                <option value="" disabled>Select reason</option>
                 <option value="registration">Registration</option>
                 <option value="renewal">Renewal</option>
                 <option value="late_fee">Late Fee</option>
@@ -5910,19 +6385,15 @@ interface DocumentUploadModalProps {
   onClose: () => void;
   memberId: string;
   member: any;
+  children?: any[];
 }
 
-function DocumentUploadModal({ isOpen, onClose, memberId, member }: DocumentUploadModalProps) {
+function DocumentUploadModal({ isOpen, onClose, memberId, member, children = [] }: DocumentUploadModalProps) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const hasJointMember = member?.app_type === 'joint';
-  
-  const [files, setFiles] = useState<{
-    main_photo_id?: File;
-    main_proof_address?: File;
-    joint_photo_id?: File;
-    joint_proof_address?: File;
-  }>({});
+
+  const [files, setFiles] = useState<Record<string, File>>({});
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
@@ -5993,13 +6464,28 @@ function DocumentUploadModal({ isOpen, onClose, memberId, member }: DocumentUplo
         }
       }
 
-      // Update member record
-      const { error } = await supabase
-        .from('members')
-        .update(updates)
-        .eq('id', memberId);
+      if (Object.keys(updates).length > 0) {
+        const { error } = await supabase.from('members').update(updates).eq('id', memberId);
+        if (error) throw error;
+      }
 
-      if (error) throw error;
+      const ts = Date.now();
+      for (const child of children) {
+        const fieldKey = `child-${child.id}`;
+        const file = files[fieldKey];
+        if (!file) continue;
+
+        const ext = file.name.split('.').pop();
+        const url = await uploadFile(
+          file,
+          `${memberId}/child-${child.id}-birth-cert-${ts}.${ext}`
+        );
+        const { error: childError } = await supabase
+          .from('children')
+          .update({ birth_certificate_url: url })
+          .eq('id', child.id);
+        if (childError) throw childError;
+      }
 
       await queryClient.resetQueries({ queryKey: ['member-detail', memberId] });
       toast.success('Documents uploaded successfully');
@@ -6022,20 +6508,20 @@ function DocumentUploadModal({ isOpen, onClose, memberId, member }: DocumentUplo
       className={`border-2 border-dashed rounded-lg p-4 transition-colors ${
         dragOver === field
           ? 'border-emerald-500 bg-emerald-50'
-          : files[field as keyof typeof files]
+          : files[field]
           ? 'border-emerald-300 bg-emerald-50'
           : 'border-gray-300 hover:border-gray-400'
       }`}
     >
       <div className="text-center">
         <Upload className={`h-8 w-8 mx-auto mb-2 ${
-          files[field as keyof typeof files] ? 'text-emerald-600' : 'text-gray-400'
+          files[field] ? 'text-emerald-600' : 'text-gray-400'
         }`} />
         <p className="text-sm font-medium text-gray-900 mb-1">{label}</p>
         
-        {files[field as keyof typeof files] ? (
+        {files[field] ? (
           <p className="text-xs text-emerald-600 mb-2">
-            ✓ {files[field as keyof typeof files]!.name}
+            ✓ {files[field].name}
           </p>
         ) : currentUrl ? (
           <p className="text-xs text-gray-500 mb-2">Current file uploaded</p>
@@ -6111,6 +6597,31 @@ function DocumentUploadModal({ isOpen, onClose, memberId, member }: DocumentUplo
                   label="Proof of Address *" 
                   currentUrl={member?.joint_proof_address_url}
                 />
+              </div>
+            </div>
+          )}
+
+          {children.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center">
+                <Baby className="h-4 w-4 mr-2 text-emerald-600" />
+                Children's Documents
+              </h4>
+              <div className="grid grid-cols-1 gap-4">
+                {children.map((child: any) => {
+                  const childName =
+                    [child.first_name, child.last_name].filter(Boolean).join(' ') || 'Child';
+                  const fieldKey = `child-${child.id}`;
+
+                  return (
+                    <FileUploadBox
+                      key={child.id}
+                      field={fieldKey}
+                      label={`${childName} — Birth Certificate`}
+                      currentUrl={child.birth_certificate_url}
+                    />
+                  );
+                })}
               </div>
             </div>
           )}

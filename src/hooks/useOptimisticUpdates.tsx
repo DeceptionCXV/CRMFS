@@ -3,6 +3,11 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import {
+  updateMemberStatus,
+  type MemberStatus,
+  type UpdateMemberStatusOptions,
+} from '../lib/memberStatus';
 
 // ============================================
 // 1. OPTIMISTIC MEMBER STATUS UPDATE
@@ -12,13 +17,16 @@ export function useMemberStatusUpdate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ memberId, newStatus }: { memberId: string; newStatus: string }) => {
-      const { error } = await supabase
-        .from('members')
-        .update({ status: newStatus })
-        .eq('id', memberId);
-
-      if (error) throw error;
+    mutationFn: async ({
+      memberId,
+      newStatus,
+      options,
+    }: {
+      memberId: string;
+      newStatus: MemberStatus;
+      options?: UpdateMemberStatusOptions;
+    }) => {
+      await updateMemberStatus(memberId, newStatus, options);
     },
 
     // BEFORE server responds - update UI immediately!

@@ -501,6 +501,25 @@ Deno.serve(async (req: Request) => {
       })
     });
 
+    if (emailType === 'late_payment_warning') {
+      const nextCount = (member.late_warnings_count ?? 0) + 1;
+      const memberPatch: Record<string, unknown> = {
+        late_warnings_count: nextCount,
+      };
+      if (member.status === 'paused') {
+        memberPatch.paused_reason = `Late payment - ${nextCount} warning${nextCount === 1 ? '' : 's'} issued`;
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/members?id=eq.${memberId}`, {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(memberPatch)
+      });
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

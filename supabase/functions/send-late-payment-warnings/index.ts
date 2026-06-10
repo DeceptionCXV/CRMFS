@@ -229,6 +229,16 @@ serve(async (req) => {
             }
           })
 
+        const warningCount = member.warning_number ?? 0
+        const pausedReason = `Late payment - ${warningCount} warning${warningCount === 1 ? '' : 's'} issued`
+        await supabase
+          .from('members')
+          .update({
+            late_warnings_count: warningCount,
+            paused_reason: pausedReason,
+          })
+          .eq('id', member.member_id)
+
         emailsSent++
         console.log(`✅ Sent warning ${member.warning_number} to ${member.email} (${member.days_overdue} days overdue)`)
 

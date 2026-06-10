@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { supabase } from '../lib/supabase';
 import {
   CheckSquare, Square, X, Eye, CheckCircle2,
@@ -8,7 +8,12 @@ import {
   XCircle, Lock,
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-import { checkOutstandingPayments } from '../lib/activationHelpers';
+import { getMemberActivationEligibility } from '../lib/memberActivationRequirements';
+import {
+  fetchMemberStatusContext,
+  updateMemberStatus,
+  MemberStatusError,
+} from '../lib/memberStatus';
 import { ActivationConfirmModal } from './ActivationConfirmModal';
 
 interface Member {
@@ -26,38 +31,6 @@ interface BulkActionsBarProps {
   onSelectAll: () => void;
 }
 
-interface MissingRequirements {
-  payment: boolean;
-  documents: boolean;
-}
-
-async function canActivateMember(memberId: string): Promise<{ canActivate: boolean; missingRequirements: MissingRequirements }> {
-  const [{ data: payments }, { data: member }] = await Promise.all([
-    supabase
-      .from('payments')
-      .select('payment_status')
-      .eq('member_id', memberId)
-      .eq('payment_status', 'completed')
-      .limit(1),
-    supabase
-      .from('members')
-      .select('main_photo_id_url, main_proof_address_url')
-      .eq('id', memberId)
-      .maybeSingle(),
-  ]);
-
-  const hasPayment = !!(payments && payments.length > 0);
-  const hasDocuments = !!(member?.main_photo_id_url && member?.main_proof_address_url);
-
-  return {
-    canActivate: hasPayment && hasDocuments,
-    missingRequirements: {
-      payment: !hasPayment,
-      documents: !hasDocuments,
-    },
-  };
-}
-
 export function BulkActionsBar({
   selectedIds,
   allIds,
@@ -66,11 +39,11 @@ export function BulkActionsBar({
   onSelectAll,
 }: BulkActionsBarProps) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
+  const { openMember } = useWorkspace();
   const { showToast } = useToast();
 
   const [showCannotActivateModal, setShowCannotActivateModal] = useState(false);
-  const [missingReqs, setMissingReqs] = useState<MissingRequirements>({ payment: false, documents: false });
+  const [activationBlockers, setActivationBlockers] = useState<string[]>([]);
   const [showActivationConfirm, setShowActivationConfirm] = useState(false);
   const [activationPendingTotal, setActivationPendingTotal] = useState(0);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -93,34 +66,42 @@ export function BulkActionsBar({
 
   const pauseMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('members')
-        .update({ status: 'paused' })
-        .eq('id', id);
-      if (error) throw error;
+      await updateMemberStatus(id, 'paused', {
+        pausedReason: 'Paused from members list',
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       onClearSelection();
       showToast('Member paused successfully', 'success');
     },
-    onError: () => showToast('Failed to pause member', 'error'),
+    onError: (err: unknown) => {
+      const message =
+        err instanceof MemberStatusError
+          ? err.blockers.join(' · ') || err.message
+          : 'Failed to pause member';
+      showToast(message, 'error');
+    },
   });
 
   const activateMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('members')
-        .update({ status: 'active' })
-        .eq('id', id);
-      if (error) throw error;
+      await updateMemberStatus(id, 'active', {
+        changeReason: 'Activated from members list',
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       onClearSelection();
       showToast('Member activated successfully', 'success');
     },
-    onError: () => showToast('Failed to activate member', 'error'),
+    onError: (err: unknown) => {
+      const message =
+        err instanceof MemberStatusError
+          ? err.blockers.join(' · ') || err.message
+          : 'Failed to activate member';
+      showToast(message, 'error');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -164,13 +145,28 @@ export function BulkActionsBar({
     if (!selectedMember) return;
     setIsCheckingActivation(true);
     try {
-      const result = await canActivateMember(selectedMember.id);
-      if (!result.canActivate) {
-        setMissingReqs(result.missingRequirements);
+      const context = await fetchMemberStatusContext(selectedMember.id);
+      if (!context) {
+        showToast('Member not found', 'error');
+        return;
+      }
+      const eligibility = getMemberActivationEligibility(
+        {
+          app_type: (context.member.app_type as 'single' | 'joint') || 'single',
+          main_photo_id_url: context.member.main_photo_id_url,
+          main_proof_address_url: context.member.main_proof_address_url,
+          joint_photo_id_url: context.member.joint_photo_id_url,
+          joint_proof_address_url: context.member.joint_proof_address_url,
+        },
+        context.children,
+        context.payments
+      );
+      if (!eligibility.canActivate) {
+        setActivationBlockers(eligibility.blockers);
         setShowCannotActivateModal(true);
       } else {
-        const { pendingTotal } = await checkOutstandingPayments(selectedMember.id);
-        setActivationPendingTotal(pendingTotal);
+        setActivationBlockers([]);
+        setActivationPendingTotal(eligibility.outstandingBalance);
         setShowActivationConfirm(true);
       }
     } finally {
@@ -282,7 +278,7 @@ export function BulkActionsBar({
               disabled={isMultiple}
               disabledReason="Select only one member to view"
               onClick={() => {
-                if (selectedMember) navigate(`/members/${selectedMember.id}`);
+                if (selectedMember) openMember(selectedMember.id);
               }}
             />
 
@@ -350,6 +346,7 @@ export function BulkActionsBar({
         memberName={selectedMember ? `${selectedMember.first_name} ${selectedMember.last_name}` : ''}
         hasPendingPayments={activationPendingTotal > 0}
         pendingTotal={activationPendingTotal}
+        activationBlockers={activationBlockers}
         isLoading={activateMutation.isPending}
       />
 
@@ -367,18 +364,15 @@ export function BulkActionsBar({
               This member cannot be activated. The following requirements are missing:
             </p>
             <ul className="space-y-2 mb-6">
-              {missingReqs.payment && (
-                <li className="flex items-center space-x-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {activationBlockers.map((blocker) => (
+                <li
+                  key={blocker}
+                  className="flex items-center space-x-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                >
                   <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                  <span>Payment not received — no completed payment on record</span>
+                  <span>{blocker}</span>
                 </li>
-              )}
-              {missingReqs.documents && (
-                <li className="flex items-center space-x-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                  <span>Documents not uploaded — Photo ID and Proof of Address required</span>
-                </li>
-              )}
+              ))}
             </ul>
             <button
               onClick={() => setShowCannotActivateModal(false)}

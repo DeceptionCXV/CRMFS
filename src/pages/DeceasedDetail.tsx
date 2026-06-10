@@ -1,16 +1,35 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { getActiveDeceasedMemberId, consumeDeceasedViewOptions } from '../lib/workspaceStorage';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { ProfileHeaderSkeleton, FormSkeleton } from '../components/SkeletonComponents';
 import { ArrowLeft, FileHeart, Calendar, MapPin, Phone, Mail, User, DollarSign, FileText, CheckSquare, Plus, CreditCard as Edit, Save, X, Clock, AlertCircle, CheckCircle, Users } from 'lucide-react';
 
 export default function DeceasedDetail() {
-  const { id } = useParams();
+  const id = getActiveDeceasedMemberId();
+  const navigate = useNavigate();
+  const { openRecordDeath } = useWorkspace();
+  const deceasedViewAppliedRef = useRef(false);
+  const pendingEditFromNavRef = useRef(false);
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<any>(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!id) {
+      navigate('/deceased', { replace: true });
+      return;
+    }
+    if (deceasedViewAppliedRef.current) return;
+    deceasedViewAppliedRef.current = true;
+    const view = consumeDeceasedViewOptions();
+    if (view.edit) {
+      pendingEditFromNavRef.current = true;
+    }
+  }, [id, navigate]);
 
   // Fetch deceased member with all related data
   const { data: deceasedData, isLoading } = useQuery({
@@ -64,6 +83,13 @@ export default function DeceasedDetail() {
     };
   },
 });
+
+  useEffect(() => {
+    if (!pendingEditFromNavRef.current || !deceasedData?.record) return;
+    setEditedData({ ...deceasedData.record });
+    setIsEditing(true);
+    pendingEditFromNavRef.current = false;
+  }, [deceasedData]);
 
   const updateRecordMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -288,13 +314,14 @@ export default function DeceasedDetail() {
               <p className="text-sm text-yellow-700 mt-1">
                 This member is marked as deceased but has no funeral record. Create one to track the funeral process.
               </p>
-              <Link
-                to={`/deceased/record/${member?.id}`}
+              <button
+                type="button"
+                onClick={() => member?.id && openRecordDeath(member.id)}
                 className="mt-3 inline-flex items-center px-3 py-1.5 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Create Funeral Record
-              </Link>
+              </button>
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@
 > A comprehensive member and payment management system built for Falkirk Central Mosque's death committee (Central Region Muslim Funeral Service).
 
 **Built by:** [Kelpie AI](https://kelpieai.co.uk)  
-**Version:** 0.11.0  
+**Version:** 0.12.0.580  
 **Status:** Active Development  
 **Tech Stack:** React + TypeScript + Supabase + Tailwind CSS + Resend
 
@@ -834,6 +834,23 @@ This system handles sensitive personal data. Security measures include:
 ---
 
 ## 📈 Version History
+
+### v0.12.0.580 (03 June 2026)
+**Security and membership status hardening** following committee review. This release removes member IDs from browser URLs, enforces consistent activation rules across the entire app, and adds database-level protection against invalid status changes.
+
+**Bug Fixes:**
+- Fixed: Member and entity UUIDs visible in the address bar — detail pages now use session-based navigation (`/members/detail`, `/deceased/detail`) with no shareable ID links
+- Fixed: Old bookmarked member URLs could open profiles directly — legacy UUID routes now redirect to the list without restoring the member
+- Fixed: Members could be activated without full document checks from Bulk Actions and the Payments page — all activation paths now use the same payment + document eligibility rules
+- Fixed: Inconsistent pause status (`inactive` vs `paused`) across profile actions, bulk pause, and overdue enforcement — manual and automatic pauses now use `paused` consistently
+- Fixed: Active members could remain active when required documents were missing — profile load now demotes to Pending and blocks reactivation until uploads are complete
+- Fixed: Documents tab in the member sidebar gave no warning when uploads were outstanding — amber warning icon and highlight shown when required documents are missing
+- Fixed: Registration could mark members Active without a receipt payment row — receipt now recorded when payment is received so activation balance checks work correctly
+- Fixed: Unpause flow could set Active without passing full eligibility after payment — reactivation now validates documents and balance after the payment is recorded
+- Fixed: Payment history table could show Registration and Renewal rows in the wrong order when dates shared the same calendar day — sort now uses payment time from `created_at` for date-only entries
+- Fixed: Returning to the app after switching browser tabs could trigger the login splash and reset navigation — splash only runs on genuine sign-in, not token refresh
+
+---
 
 ### v0.11.0 (22 May 2026)
 **Pre-launch polish and bug fixes** based on final committee testing. This release resolves the last batch of outstanding issues before go-live, covering document uploads, payment data integrity, registration wizard improvements, and a range of UI/UX fixes across Member Detail and the registration flow.

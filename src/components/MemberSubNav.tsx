@@ -13,6 +13,7 @@ import {
   Download,
   Mail,
   Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface MemberSubNavProps {
@@ -24,6 +25,8 @@ interface MemberSubNavProps {
     payments?: number;
   };
   showJointMember?: boolean;
+  /** Required uploads missing (main/joint/children birth certs). */
+  documentsOutstanding?: boolean;
   quickActions?: {
     onPrint?: () => void;
     onExport?: () => void;
@@ -37,6 +40,7 @@ export default function MemberSubNav({
   onTabChange,
   counts = {},
   showJointMember = false,
+  documentsOutstanding = false,
   quickActions = {},
 }: MemberSubNavProps) {
   const navItems = [
@@ -69,6 +73,8 @@ export default function MemberSubNav({
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
+          const isDocumentsWarning =
+            item.id === 'documents' && documentsOutstanding;
 
           return (
             <button
@@ -77,35 +83,54 @@ export default function MemberSubNav({
               className={`
                 w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200
                 group relative
-                ${isActive
-                  ? 'bg-emerald-50 dark:bg-gray-800 text-[#2d5016] dark:text-emerald-400 font-semibold border-l-3 border-l-[#2d5016] pl-3.5'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white hover:border-l-3 hover:border-l-[#D4AF37] hover:pl-3.5'
+                ${
+                  isDocumentsWarning
+                    ? isActive
+                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-semibold border-l-3 border-l-amber-500 pl-3.5'
+                      : 'text-amber-900 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-950 dark:hover:text-amber-100 hover:border-l-3 hover:border-l-amber-400 hover:pl-3.5'
+                    : isActive
+                      ? 'bg-emerald-50 dark:bg-gray-800 text-[#2d5016] dark:text-emerald-400 font-semibold border-l-3 border-l-[#2d5016] pl-3.5'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white hover:border-l-3 hover:border-l-[#D4AF37] hover:pl-3.5'
                 }
               `}
             >
               <div className="flex items-center gap-3">
                 <Icon
                   className={`h-[18px] w-[18px] transition-colors ${
-                    isActive ? 'text-[#2d5016] dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500 group-hover:text-[#D4AF37]'
+                    isDocumentsWarning
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : isActive
+                        ? 'text-[#2d5016] dark:text-emerald-400'
+                        : 'text-gray-400 dark:text-gray-500 group-hover:text-[#D4AF37]'
                   }`}
                 />
                 <span className="text-[15px]">{item.label}</span>
               </div>
 
-              {/* Count badge */}
-              {item.count !== undefined && item.count > 0 && (
-                <span
-                  className={`
-                    inline-flex items-center justify-center min-w-[24px] h-5 px-2 text-xs font-bold rounded-full
-                    ${isActive
-                      ? 'bg-[#2d5016] text-white'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 group-hover:bg-[#D4AF37] group-hover:text-white'
-                    }
-                  `}
-                >
-                  {item.count}
-                </span>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {item.count !== undefined && item.count > 0 && (
+                  <span
+                    className={`
+                      inline-flex items-center justify-center min-w-[24px] h-5 px-2 text-xs font-bold rounded-full
+                      ${
+                        isDocumentsWarning
+                          ? 'bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100'
+                          : isActive
+                            ? 'bg-[#2d5016] text-white'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 group-hover:bg-[#D4AF37] group-hover:text-white'
+                      }
+                    `}
+                  >
+                    {item.count}
+                  </span>
+                )}
+                {isDocumentsWarning && (
+                  <AlertTriangle
+                    className="h-[18px] w-[18px] text-amber-500 dark:text-amber-400"
+                    aria-label="Required documents outstanding"
+                  />
+                )}
+              </div>
             </button>
           );
         })}
