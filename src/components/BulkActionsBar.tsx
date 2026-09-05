@@ -15,6 +15,7 @@ import {
   MemberStatusError,
 } from '../lib/memberStatus';
 import { ActivationConfirmModal } from './ActivationConfirmModal';
+import { portal } from './ModalPortal';
 
 interface Member {
   id: string;
@@ -351,8 +352,8 @@ export function BulkActionsBar({
       />
 
       {/* Cannot Activate Modal */}
-      {showCannotActivateModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      {showCannotActivateModal && portal(
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
             <div className="flex items-center space-x-3 mb-4">
               <div className="p-2.5 bg-red-100 rounded-full">
@@ -385,8 +386,8 @@ export function BulkActionsBar({
       )}
 
       {/* Delete Modal */}
-      {showDeleteModal && selectedMember && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      {showDeleteModal && selectedMember && portal(
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
             <div className="flex items-center space-x-3 mb-1">
               <div className="p-2.5 bg-red-100 rounded-full">

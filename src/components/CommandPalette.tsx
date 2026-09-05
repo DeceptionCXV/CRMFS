@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { Search, User, CreditCard, FileText, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { portal } from './ModalPortal';
 
 interface SearchResult {
   type: 'member' | 'deceased' | 'payment' | 'page';
@@ -200,16 +201,16 @@ export default function CommandPalette() {
 
   if (!isOpen) return null;
 
-  return (
+  return portal(
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-50 animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/50 z-[100] animate-in fade-in duration-200"
         onClick={() => setIsOpen(false)}
       />
 
       {/* Command Palette */}
-      <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] px-4">
+      <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[20vh] px-4">
         <div
           className="bg-white rounded-lg shadow-2xl w-full max-w-2xl animate-in zoom-in-95 slide-in-from-top-4 duration-200"
           onClick={(e) => e.stopPropagation()}

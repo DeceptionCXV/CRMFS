@@ -37,6 +37,7 @@ import {
   type MemberStatus,
 } from '../lib/memberStatus';
 import { ActivationConfirmModal } from '../components/ActivationConfirmModal';
+import { portal } from '../components/ModalPortal';
 import { ArrowLeft, User, Users, Baby, Heart, Calendar, Phone, MapPin, CreditCard as Edit, Save, X, Trash2, Pause, CreditCard, AlertTriangle, PoundSterling, Stethoscope, CheckSquare, CheckCircle, FileText, Upload, AlertCircle, Eye, Download, Info, PlayCircle, Shield, MoreVertical, ChevronDown, ChevronUp, Clock, Plus } from 'lucide-react';
 
 export default function MemberDetail() {
@@ -1290,8 +1291,8 @@ export default function MemberDetail() {
       </div>
 
       {/* Confirmation Modals */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      {showDeleteConfirm && portal(
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-red-600">
@@ -1448,8 +1449,8 @@ export default function MemberDetail() {
       />
 
       {/* Unpause Membership Modal */}
-      {showUnpauseModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      {showUnpauseModal && portal(
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -1660,8 +1661,8 @@ export default function MemberDetail() {
       )}
 
       {/* Deletion Request Modal */}
-      {showDeletionRequestModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      {showDeletionRequestModal && portal(
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -1814,8 +1815,8 @@ export default function MemberDetail() {
       )}
 
       {/* Access Log Modal */}
-      {showAccessLog && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      {showAccessLog && portal(
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -2372,8 +2373,8 @@ function ConfirmModal({ title, message, confirmText, confirmColor, onConfirm, on
     gray: 'bg-gray-600 hover:bg-gray-700',
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
         <p className="text-sm text-gray-600 mb-6">{message}</p>
@@ -3512,8 +3513,85 @@ function MedicalInfoTab({ medicalInfo, memberId }: any) {
 }
 
 // Documents Tab Component
+const IMAGE_DOCUMENT_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+
+function isImageDocumentUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url, window.location.origin).pathname;
+    return IMAGE_DOCUMENT_EXT.test(pathname);
+  } catch {
+    return IMAGE_DOCUMENT_EXT.test(url.split('?')[0]);
+  }
+}
+
+function DocumentPreviewModal({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener('keydown', onKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
+
+  return portal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Document preview"
+    >
+      <img
+        src={url}
+        alt="Document preview"
+        className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+function DocumentViewButton({
+  url,
+  onPreview,
+}: {
+  url: string;
+  onPreview: (url: string) => void;
+}) {
+  if (isImageDocumentUrl(url)) {
+    return (
+      <button
+        type="button"
+        onClick={() => onPreview(url)}
+        className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
+        title="View document"
+      >
+        <Eye className="h-4 w-4 text-emerald-600" />
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
+      title="View document"
+    >
+      <Eye className="h-4 w-4 text-emerald-600" />
+    </a>
+  );
+}
+
 function DocumentsTab({ member, memberId, children = [] }: { member: any; memberId: string; children?: any[] }) {
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const hasLegacyChildDocs =
     member?.children_documents && Object.keys(member.children_documents).length > 0;
@@ -3585,15 +3663,10 @@ function DocumentsTab({ member, memberId, children = [] }: { member: any; member
 
             {member?.main_photo_id_url ? (
               <div className="flex items-center space-x-2">
-                <a
-                  href={member.main_photo_id_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                  title="View document"
-                >
-                  <Eye className="h-4 w-4 text-emerald-600" />
-                </a>
+                <DocumentViewButton
+                  url={member.main_photo_id_url}
+                  onPreview={setPreviewUrl}
+                />
                 <a
                   href={member.main_photo_id_url}
                   download
@@ -3642,15 +3715,10 @@ function DocumentsTab({ member, memberId, children = [] }: { member: any; member
 
             {member?.main_proof_address_url ? (
               <div className="flex items-center space-x-2">
-                <a
-                  href={member.main_proof_address_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                  title="View document"
-                >
-                  <Eye className="h-4 w-4 text-emerald-600" />
-                </a>
+                <DocumentViewButton
+                  url={member.main_proof_address_url}
+                  onPreview={setPreviewUrl}
+                />
                 <a
                   href={member.main_proof_address_url}
                   download
@@ -3710,15 +3778,10 @@ function DocumentsTab({ member, memberId, children = [] }: { member: any; member
 
               {member?.joint_photo_id_url ? (
                 <div className="flex items-center space-x-2">
-                  <a
-                    href={member.joint_photo_id_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                    title="View document"
-                  >
-                    <Eye className="h-4 w-4 text-emerald-600" />
-                  </a>
+                  <DocumentViewButton
+                    url={member.joint_photo_id_url}
+                    onPreview={setPreviewUrl}
+                  />
                   <a
                     href={member.joint_photo_id_url}
                     download
@@ -3767,15 +3830,10 @@ function DocumentsTab({ member, memberId, children = [] }: { member: any; member
 
               {member?.joint_proof_address_url ? (
                 <div className="flex items-center space-x-2">
-                  <a
-                    href={member.joint_proof_address_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                    title="View document"
-                  >
-                    <Eye className="h-4 w-4 text-emerald-600" />
-                  </a>
+                  <DocumentViewButton
+                    url={member.joint_proof_address_url}
+                    onPreview={setPreviewUrl}
+                  />
                   <a
                     href={member.joint_proof_address_url}
                     download
@@ -3837,15 +3895,10 @@ function DocumentsTab({ member, memberId, children = [] }: { member: any; member
 
                   {certUrl ? (
                     <div className="flex items-center space-x-2">
-                      <a
-                        href={certUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                        title="View document"
-                      >
-                        <Eye className="h-4 w-4 text-emerald-600" />
-                      </a>
+                      <DocumentViewButton
+                        url={certUrl}
+                        onPreview={setPreviewUrl}
+                      />
                       <a
                         href={certUrl}
                         download
@@ -3887,15 +3940,10 @@ function DocumentsTab({ member, memberId, children = [] }: { member: any; member
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                        title="View document"
-                      >
-                        <Eye className="h-4 w-4 text-emerald-600" />
-                      </a>
+                      <DocumentViewButton
+                        url={url}
+                        onPreview={setPreviewUrl}
+                      />
                       <a
                         href={url}
                         download
@@ -3945,6 +3993,13 @@ function DocumentsTab({ member, memberId, children = [] }: { member: any; member
         memberId={memberId}
         member={member}
         children={children}
+      />
+    )}
+
+    {previewUrl && (
+      <DocumentPreviewModal
+        url={previewUrl}
+        onClose={() => setPreviewUrl(null)}
       />
     )}
   </>
@@ -4792,8 +4847,8 @@ function ChildModal({ isOpen, onClose, memberId, child }: ChildModalProps) {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200">
@@ -4983,8 +5038,8 @@ function NextOfKinModal({ isOpen, onClose, memberId, contact }: NextOfKinModalPr
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
           <div className="flex items-center justify-between">
@@ -5267,8 +5322,8 @@ function MedicalInfoModal({ isOpen, onClose, memberId, info }: MedicalInfoModalP
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -5494,8 +5549,8 @@ function RecordPaymentModal({
 
   const balanceSummary = getMemberPaymentSummary(payments);
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -5677,8 +5732,8 @@ function AdjustPaymentModal({ payment, onClose, onSuccess }: any) {
     });
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
         <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 z-10">
           <div className="flex items-center justify-between">
@@ -6025,8 +6080,8 @@ function GPDetailsModal({ isOpen, onClose, memberId, gpDetails }: GPDetailsModal
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -6254,8 +6309,8 @@ function DeclarationsSignatureModal({ isOpen, onClose, memberId, member, jointMe
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
         <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 z-10">
           <div className="flex items-center justify-between">
@@ -6546,8 +6601,8 @@ function DocumentUploadModal({ isOpen, onClose, memberId, member, children = [] 
     </div>
   );
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+  return portal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
         <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 z-10">
           <div className="flex items-center justify-between">

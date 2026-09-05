@@ -10,6 +10,7 @@ import {
   updateMemberStatus,
 } from '../lib/memberStatus';
 import { ActivationConfirmModal } from '../components/ActivationConfirmModal';
+import { portal } from '../components/ModalPortal';
 import {
   CreditCard,
   Plus,
@@ -725,8 +726,8 @@ function AddPaymentModal({ onClose }: { onClose: () => void }) {
     createPaymentMutation.mutate();
   };
 
-  return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+  return portal(
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[100] flex items-center justify-center p-4">
       <div className="relative bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-bold text-gray-900">Record Payment</h3>

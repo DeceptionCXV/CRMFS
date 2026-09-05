@@ -32,7 +32,7 @@ export default function CompactLayout({ children, showSubNav = false, subNav }: 
         </div>
       )}
 
-      <main className={`flex-1 overflow-x-hidden ${showSubNav ? 'lg:ml-72' : ''}`}>
+      <main className={`flex-1 min-w-0 ${showSubNav ? 'lg:ml-72' : ''}`}>
         <div className="max-w-[1920px] mx-auto">
           <div className="pt-20 md:pt-8 px-4 md:px-6 lg:px-8 py-6">
             {children || <Outlet />}

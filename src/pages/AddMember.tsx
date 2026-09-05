@@ -16,6 +16,7 @@ import { useToast } from '../contexts/ToastContext';
 import DateInput from '../components/DateInput';
 import RegistrationSidebar from '../components/RegistrationSidebar';
 import { ActivationConfirmModal } from '../components/ActivationConfirmModal';
+import { portal } from '../components/ModalPortal';
 import {
   ArrowLeft,
   ArrowRight,
@@ -1343,8 +1344,8 @@ export default function AddMember() {
       />
 
       {/* Document Warning Modal */}
-      {showDocWarningModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      {showDocWarningModal && portal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 border border-gray-200 dark:border-gray-700">
             <div className="flex items-start gap-4 mb-5">
               <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { FieldChange, formatValue } from '../hooks/useFormChangeTracker';
+import { portal } from './ModalPortal';
 
 interface ChangeReasonModalProps {
   isOpen: boolean;
@@ -40,8 +41,8 @@ export default function ChangeReasonModal({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return portal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
 
       <div className="relative bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden">
